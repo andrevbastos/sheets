@@ -112,10 +112,15 @@ class DiceWindow(ctk.CTkToplevel):
         return entry
 
     def _update_extra(self):
+        """Sem vantagem/desvantagem, o campo de dados extras fica cinza e não parece editável."""
         mode = MODE_LABELS[self.mode.get()]
-        state = "disabled" if mode == dice.NORMAL else "normal"
-        self.extra.configure(state=state)
-        self.extra_label.configure(text_color=TEXT_FAINT if state == "disabled" else TEXT_MUTED)
+        active = mode != dice.NORMAL
+        self.extra.configure(state="normal" if active else "disabled",
+                             fg_color=INPUT if active else PANEL,
+                             border_color=BORDER if active else PANEL,
+                             text_color=TEXT if active else TEXT_FAINT)
+        self.extra._entry.configure(cursor="xterm" if active else "arrow")  # cursor do campo interno do CTk
+        self.extra_label.configure(text_color=TEXT_MUTED if active else TEXT_FAINT)
         hints = {dice.NORMAL: "", dice.VANTAGEM: "rola a mais e fica com o maior",
                  dice.DESVANTAGEM: "rola a mais e fica com o menor"}
         self.extra_hint.configure(text=hints[mode])
