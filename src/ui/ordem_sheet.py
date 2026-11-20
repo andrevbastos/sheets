@@ -74,14 +74,16 @@ class SheetView(ctk.CTkFrame):
     @staticmethod
     def _read(widget, kind):
         if kind == "text":
-            return widget.get("1.0", "end-1c")
+            return "" if getattr(widget, "_hint", False) else widget.get("1.0", "end-1c")
         return widget.get()
 
     def _write(self, widget, value, kind):
         text = self._display(value, kind)
         if kind == "text":
+            self._hide_hint(widget)
             widget.delete("1.0", "end")
             widget.insert("1.0", text)
+            self._show_hint(widget)
         elif kind in ("combo", "grade"):
             widget.set(text)
         else:
@@ -156,13 +158,31 @@ class SheetView(ctk.CTkFrame):
         self.fields.append((menu, path, "grade"))
         return menu
 
-    def _textbox(self, parent, path, auto_height=False, text_color=TEXT):
+    def _show_hint(self, box):
+        """Área vazia e sem foco mostra o texto de exemplo em cinza (nunca vai para a ficha)."""
+        placeholder = getattr(box, "_placeholder", None)
+        if (placeholder and not getattr(box, "_hint", False) and not self._has_focus(box)
+                and box.get("1.0", "end-1c") == ""):
+            box.insert("1.0", placeholder)
+            box.configure(text_color=TEXT_FAINT)
+            box._hint = True
+
+    @staticmethod
+    def _hide_hint(box):
+        if getattr(box, "_hint", False):
+            box.delete("1.0", "end")
+            box.configure(text_color=box._normal_color)
+            box._hint = False
+
+    def _textbox(self, parent, path, auto_height=False, text_color=TEXT, placeholder=None):
         """Texto com quebra de linha. Com auto_height, a altura acompanha o tamanho do texto."""
         box = ctk.CTkTextbox(parent, height=28 if auto_height else 110, wrap="word", font=ctk.CTkFont(size=11),
                              text_color=text_color,
                              fg_color="transparent" if auto_height else INPUT,
                              border_color=BORDER, border_width=0 if auto_height else 1,
                              activate_scrollbars=not auto_height)
+        box._placeholder, box._normal_color, box._hint = placeholder, text_color, False
+        box.bind("<FocusIn>", lambda *_: self._hide_hint(box))
         self._write(box, self._get(path), "text")
         self.fields.append((box, path, "text"))
 
@@ -188,12 +208,13 @@ class SheetView(ctk.CTkFrame):
 
         def save(_event=None):
             try:
-                value = box.get("1.0", "end-1c").strip()
+                value = self._read(box, "text").strip()
             except tk.TclError:
                 return
             if value != self._get(path):
                 self._set(path, value)
                 self._changed()
+            box.after_idle(lambda: box.winfo_exists() and self._show_hint(box))
 
         box.bind("<FocusOut>", save)
         return box
@@ -537,7 +558,7 @@ class SheetView(ctk.CTkFrame):
         return scroll
 
     def _list_rows(self, scroll, base_path, items, columns, keys, on_remove, first_bold=True, wrap_key=None,
-                   affixes=None, clamps=None):
+                   affixes=None, clamps=None, placeholder=None):
         """Uma linha editável por item. `wrap_key` vai numa área de texto com quebra de linha embaixo.
         `affixes` = {chave: (texto antes, texto depois)} fixos ao redor do campo (ex.: "Pág." e "PE")."""
         affixes = affixes or {}
@@ -570,8 +591,8 @@ class SheetView(ctk.CTkFrame):
             small_button(line, "X", lambda i=idx: on_remove(i), width=24, danger=True,
                          height=20).pack(side=tk.RIGHT, padx=8)
             if wrap_key:
-                self._textbox(row, base_path + (idx, wrap_key), auto_height=True,
-                              text_color=TEXT_DIM).pack(fill=tk.X, padx=6, pady=(0, 6))
+                self._textbox(row, base_path + (idx, wrap_key), auto_height=True, text_color=TEXT_DIM,
+                              placeholder=placeholder).pack(fill=tk.X, padx=6, pady=(0, 6))
 
     def _append(self, path, item, entries, repopulate):
         if not item.get("nome"):
@@ -602,7 +623,8 @@ class SheetView(ctk.CTkFrame):
             lambda es: self._append(("ataques",), {k: e.get().strip() for k, e in zip(keys, es)}, es,
                                     self._populate_attacks))
         self._list_rows(scroll, ("ataques",), self.sheet["ataques"], self.ATTACK_COLS, keys,
-                        lambda i: self._remove(("ataques",), i, self._populate_attacks), wrap_key="especial")
+                        lambda i: self._remove(("ataques",), i, self._populate_attacks), wrap_key="especial",
+                        placeholder="Crítico, alcance, efeito especial...")
 
     # Habilidades & Rituais
     ABILITY_COLS = [(150, True), (40, False), (40, False), (170, True)]
@@ -631,10 +653,11 @@ class SheetView(ctk.CTkFrame):
                                     self._populate_abilities))
         self._list_rows(scroll, ("habilidades",), self.sheet["habilidades"], self.ABILITY_COLS, keys,
                         lambda i: self._remove(("habilidades",), i, self._populate_abilities),
-                        wrap_key="descricao", affixes={"custo": (None, "PE"), "pagina": ("Pág.", None)})
+                        wrap_key="descricao", affixes={"custo": (None, "PE"), "pagina": ("Pág.", None)},
+                        placeholder="Descrição da habilidade...")
 
     # Inventário
-    ITEM_COLS = [(300, True), (80, False), (70, False)]
+    ITEM_COLS = [(140, True), (70, False), (60, False), (140, True)]
 
     def _build_inventory(self, view):
         top = ctk.CTkFrame(view, fg_color=PANEL_DARK, corner_radius=6)
@@ -679,12 +702,12 @@ class SheetView(ctk.CTkFrame):
         view = self.items_view
         for child in view.winfo_children():
             child.destroy()
-        keys = ("nome", "categoria", "espacos")
+        keys = ("nome", "categoria", "espacos", "descricao")
         path = ("inventario", "itens")
 
         def add(es):
             item = {"nome": es[0].get().strip(), "categoria": es[1].get().strip().upper(),
-                    "espacos": max(0, to_int(es[2].get(), 1))}
+                    "espacos": max(0, to_int(es[2].get(), 1)), "descricao": es[3].get().strip()}
             livre = ordem.carga_absoluta(self.sheet) - ordem.espacos_usados(self.sheet)
             if item["nome"] and item["espacos"] > livre:
                 self._inventory_warning(f"{item['nome']} não cabe: ocupa {item['espacos']} e só restam {max(0, livre)} "
@@ -705,10 +728,11 @@ class SheetView(ctk.CTkFrame):
             self._inventory_warning("")
             return max(0, value)
 
-        scroll = self._list_section(view, self.ITEM_COLS, ("Item", "Categoria", "Espaços"), add)
+        scroll = self._list_section(view, self.ITEM_COLS, ("Item", "Categoria", "Espaços", "Descrição"), add)
         self._list_rows(scroll, path, self.sheet["inventario"]["itens"], self.ITEM_COLS, keys,
                         lambda i: self._remove(path, i, self._populate_items), first_bold=False,
-                        clamps={"espacos": clamp_espacos})
+                        clamps={"espacos": clamp_espacos}, wrap_key="descricao",
+                        placeholder="Descrição do item (o que faz, bônus...)")
 
     def _inventory_warning(self, text):
         try:

@@ -377,7 +377,7 @@ def normalize(sheet: dict, to_int, clean_list) -> dict:
         "pontos_prestigio": max(0, to_int(inv.get("pontos_prestigio"), 0)),
         "itens": [
             {"nome": str(i.get("nome") or ""), "categoria": str(i.get("categoria") or ""),
-             "espacos": max(0, to_int(i.get("espacos"), 0))}
+             "espacos": max(0, to_int(i.get("espacos"), 0)), "descricao": str(i.get("descricao") or "")}
             for i in clean_list(inv.get("itens")) if isinstance(i, dict)
         ],
     }

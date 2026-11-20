@@ -11,6 +11,7 @@ Sistemas suportados:
   - Perícias por grau (destreinado, treinado +5, veterano +10, expert +15); atributo 0 rola 2d20 e fica com o pior.
   - Carga máxima (5 × FOR; 2 com FOR 0). Sobrecarregado: −5 na Defesa e nas perícias de carga. Não dá para passar do dobro da carga: o inventário recusa o item ou limita os espaços.
   - Patente, limite de crédito e limite de itens por categoria a partir dos pontos de prestígio.
+  - Itens, ataques e habilidades têm uma área de descrição com quebra de linha embaixo de cada um.
 
 ## Instalar
 
