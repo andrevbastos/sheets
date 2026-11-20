@@ -273,10 +273,25 @@ class DMApp:
         return True
 
     def open_local_sheet(self):
-        path = filedialog.askopenfilename(title="Abrir ficha", filetypes=[("Fichas JSON", "*.json")],
-                                          initialdir=self._sheets_dir())
-        if path:
-            self._add_local(path)
+        """Abre uma ou várias fichas (Ctrl/Shift no explorador). Erros aparecem juntos num aviso só."""
+        paths = filedialog.askopenfilenames(title="Abrir fichas", filetypes=[("Fichas JSON", "*.json")],
+                                            initialdir=self._sheets_dir())
+        if not paths:
+            return
+        opened, errors = [], []
+        for path in paths:
+            sheet, error = self._read_sheet(path)
+            if error:
+                errors.append(error)
+            else:
+                opened.append(self._register_local(path, sheet))
+        if opened:
+            self.selected = opened[0]
+            self.refresh_sidebar()
+            self.show_selected()
+        if errors:
+            title = "Ficha não aberta" if len(errors) == 1 else f"{len(errors)} fichas não abertas"
+            messagebox.showerror(title, "\n\n".join(errors))
 
     def create_sheet(self):
         dialog = ctk.CTkInputDialog(title="Nova ficha", text=f"Nome do personagem ({self.system_label}):")
@@ -299,12 +314,16 @@ class DMApp:
         sheet = self._load(path)
         if sheet is None:
             return
+        self.selected = self._register_local(path, sheet)
+        self.refresh_sidebar()
+        self.show_selected()
+
+    def _register_local(self, path, sheet) -> str:
+        """Coloca a ficha na lista (sem redesenhar). Abrir o mesmo arquivo de novo só atualiza."""
         key = "local:" + os.path.normcase(os.path.abspath(path))
         self.entries[key] = Entry(key=key, label=sheet.get("nome", os.path.basename(path)), is_player=False,
                                   filepath=path, sheet=sheet)
-        self.selected = key
-        self.refresh_sidebar()
-        self.show_selected()
+        return key
 
     def remove_entry(self, key):
         entry = self.entries.pop(key, None)
@@ -383,20 +402,24 @@ class DMApp:
         self.root.after(8000, lambda: self.lbl_status.configure(text=""))
 
     # ================================================================= utilidades
-    def _load(self, path):
-        """Carrega uma ficha e garante que ela é do sistema da sessão."""
+    def _read_sheet(self, path):
+        """(ficha, None) ou (None, mensagem de erro). Confere se é do sistema da sessão."""
+        name = os.path.basename(path)
         try:
             sheet = load_sheet(path)
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Erro ao abrir ficha", f"Não foi possível ler {os.path.basename(path)}:\n{exc}")
-            return None
+            return None, f"Não foi possível ler {name}:\n{exc}"
         system = sheet.get("sistema")
         if system != self.system:
             other = SYSTEMS.get(system, (system or "desconhecido",))[0]
-            messagebox.showerror("Sistema diferente",
-                                 f"{os.path.basename(path)} é uma ficha de {other}, "
-                                 f"mas esta sessão é de {self.system_label}.")
-            return None
+            return None, f"{name} é uma ficha de {other}, mas esta sessão é de {self.system_label}."
+        return sheet, None
+
+    def _load(self, path):
+        """Carrega uma ficha; se der erro, mostra o aviso e devolve None."""
+        sheet, error = self._read_sheet(path)
+        if error:
+            messagebox.showerror("Erro ao abrir ficha", error)
         return sheet
 
     @staticmethod
