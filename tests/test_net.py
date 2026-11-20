@@ -178,6 +178,31 @@ def test_cliente_percebe_servidor_mudo_e_reconecta_com_edicoes_guardadas(sheet_f
             s.close()
 
 
+def test_sessao_informa_o_sistema_e_recusa_ficha_de_outro(sheet_file, tmp_path):
+    srv = DNDServer(host="127.0.0.1", port=0, system="ordem", **HB)
+    srv.start()
+    try:
+        c = make_client(srv)
+        assert wait_for(lambda: c.state == cl.WAITING)
+        assert c.system == "ordem"
+        with pytest.raises(ValueError):
+            srv.assign_sheet("Heroi", sheet_file, load_sheet(sheet_file))  # ficha de D&D
+        ordem_file = tmp_path / "o.json"
+        ordem_file.write_text(open("sheets/ordem-example.json", encoding="utf-8").read(), encoding="utf-8")
+        srv.assign_sheet("Heroi", str(ordem_file), load_sheet(str(ordem_file)))
+        assert wait_for(lambda: c.state == cl.ONLINE)
+
+        # jogador tenta mandar a ficha com outro sistema: ignorado
+        hacked = c.on_sheet.last()[0]
+        hacked["sistema"] = "dnd5e"
+        c.send_update(hacked)
+        time.sleep(0.5)
+        assert load_sheet(str(ordem_file))["sistema"] == "ordem"
+        c.close()
+    finally:
+        srv.stop()
+
+
 def test_versao_diferente_e_recusada(server):
     raw = socket.create_connection(("127.0.0.1", server.port))
     send_msg(raw, {"type": "login", "name": "Velho", "version": 1})

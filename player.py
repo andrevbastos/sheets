@@ -12,6 +12,7 @@ import customtkinter as ctk
 from src.net import client as net
 from src.net.client import DNDClient
 from src.net.protocol import DEFAULT_PORT
+from src.sheet_io import SYSTEMS
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, TEXT, TEXT_DIM, TITLE_FONT, WARN,
                            UiDispatcher, install_click_defocus)
 from src.ui.systems import make_sheet_view
@@ -164,7 +165,10 @@ class PlayerApp:
         if self.view is not None:
             self._set_conn_label(state)
         elif state == net.WAITING:
-            self.lbl_login_status.configure(text="Conectado! Aguardando o mestre escolher sua ficha...", text_color=WARN)
+            system = SYSTEMS.get(client.system, (None,))[0]
+            session = f" à sessão de {system}" if system else ""
+            self.lbl_login_status.configure(text=f"Conectado{session}!\nAguardando o mestre escolher sua ficha...",
+                                            text_color=WARN)
         elif state == net.RECONNECTING:
             self.lbl_login_status.configure(text="Conexão caiu. Tentando de novo...", text_color=WARN)
 

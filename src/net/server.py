@@ -22,10 +22,11 @@ class DNDServer:
         on_connect(name, addr), on_disconnect(name), on_update(name, sheet), on_error(name, msg)
     """
 
-    def __init__(self, host="0.0.0.0", port=DEFAULT_PORT,
+    def __init__(self, host="0.0.0.0", port=DEFAULT_PORT, system=None,
                  heartbeat_interval=HEARTBEAT_INTERVAL, heartbeat_timeout=HEARTBEAT_TIMEOUT):
         self.host = host
         self.port = port
+        self.system = system  # sistema da sessão (None = aceita qualquer um)
         self.heartbeat_interval = heartbeat_interval
         self.heartbeat_timeout = heartbeat_timeout
         self.sock = None
@@ -79,6 +80,8 @@ class DNDServer:
     def assign_sheet(self, name: str, filepath: str, sheet: dict):
         """Vincula uma ficha ao personagem e envia na hora se ele estiver conectado."""
         sheet = normalize_sheet(sheet)
+        if self.system and sheet.get("sistema") != self.system:
+            raise ValueError(f"Ficha de {sheet.get('sistema')!r} numa sessão de {self.system!r}")
         with self.lock:
             self.assignments[name] = Assignment(filepath=filepath, sheet=copy.deepcopy(sheet))
             conn = self.sessions.get(name)
@@ -136,7 +139,7 @@ class DNDServer:
                 old.send({"type": "kicked", "msg": "Outra conexão entrou com este personagem."})
                 old.close()
 
-            conn.send({"type": "welcome", "assigned": sheet is not None})
+            conn.send({"type": "welcome", "assigned": sheet is not None, "system": self.system})
             if sheet is not None:
                 conn.send({"type": "sheet", "sheet": sheet})
             self._emit(self.on_connect, name, addr)
@@ -167,6 +170,8 @@ class DNDServer:
             assignment = self.assignments.get(name)
             if not assignment:
                 return  # ainda sem ficha vinculada: ignora
+            if sheet.get("sistema") != assignment.sheet.get("sistema"):
+                return  # o jogador não pode trocar o sistema da ficha
             assignment.sheet = copy.deepcopy(sheet)
         self._save(name, assignment, sheet)
         self._emit(self.on_update, name, sheet)

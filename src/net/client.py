@@ -33,6 +33,7 @@ class DNDClient:
         self.on_sheet = None
 
         self.state = CONNECTING
+        self.system = None            # sistema da sessão, informado pelo mestre
         self._conn = None
         self._pending = None          # última ficha editada sem conexão
         self._lock = threading.Lock()
@@ -92,6 +93,7 @@ class DNDClient:
                     if kind == "welcome":
                         accepted_once = True
                         attempt = 0
+                        self.system = message.get("system")
                         if not message.get("assigned"):
                             self._set_state(WAITING, "Aguardando o mestre escolher sua ficha...")
                     elif kind == "sheet":

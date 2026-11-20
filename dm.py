@@ -3,6 +3,7 @@
 Uso: uv run dm.py [--port 5000]
 """
 import argparse
+import json
 import os
 import socket
 import tkinter as tk
@@ -17,6 +18,8 @@ from src.sheet_io import SYSTEMS, create_new_sheet, load_sheet, save_sheet
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, PANEL_DARK, TEXT_DIM, TEXT_FAINT,
                            TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, install_click_defocus)
 from src.ui.systems import life, make_sheet_view
+
+PREFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dm-prefs.json")
 
 
 @dataclass
@@ -40,20 +43,47 @@ def local_ip() -> str:
         return "127.0.0.1"
 
 
+def load_prefs() -> dict:
+    try:
+        with open(PREFS_PATH, encoding="utf-8") as file:
+            return json.load(file)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_prefs(prefs: dict):
+    try:
+        with open(PREFS_PATH, "w", encoding="utf-8") as file:
+            json.dump(prefs, file)
+    except OSError:
+        pass
+
+
 class DMApp:
-    def __init__(self, port=DEFAULT_PORT):
+    def __init__(self, port=DEFAULT_PORT, system=None):
         ctk.set_appearance_mode("dark")
         self.root = ctk.CTk()
         self.root.title("Fichas - Mestre")
-        self.root.geometry("1350x780")
-        self.root.minsize(1200, 700)
         self.root.configure(fg_color=BG)
+        self.closed = False
 
         self.entries: dict[str, Entry] = {}
         self.selected: str | None = None
         self.view = None
 
-        self.server = DNDServer(port=port)
+        # O mestre define o sistema da sessão; todas as fichas seguem ele.
+        self.system = system if system in SYSTEMS else self._pick_system()
+        if self.system is None:
+            self.closed = True
+            self.root.destroy()
+            return
+        save_prefs({**load_prefs(), "system": self.system})
+        self.system_label = SYSTEMS[self.system][0]
+        self.root.title(f"Fichas - Mestre ({self.system_label})")
+        self.root.geometry("1350x780")
+        self.root.minsize(1200, 700)
+
+        self.server = DNDServer(port=port, system=self.system)
         ui = UiDispatcher(self.root)
         self.server.on_connect = ui.wrap(self.on_player_connect)
         self.server.on_disconnect = ui.wrap(self.on_player_disconnect)
@@ -74,13 +104,37 @@ class DMApp:
             self.lbl_address.configure(text="Servidor desligado", text_color=ERROR)
 
     # ================================================================= interface
+    def _pick_system(self):
+        """Tela inicial: o mestre escolhe o sistema da sessão. Devolve a chave ou None (janela fechada)."""
+        self.root.geometry("460x300")
+        self.root.resizable(False, False)
+        choice = tk.StringVar(value="")
+        last = load_prefs().get("system")
+
+        frame = ctk.CTkFrame(self.root, fg_color=BG, corner_radius=0)
+        frame.pack(fill=tk.BOTH, expand=True)
+        ctk.CTkLabel(frame, text="NOVA SESSÃO", font=ctk.CTkFont(family=TITLE_FONT, size=20, weight="bold"),
+                     text_color="#ffffff").pack(pady=(34, 6))
+        ctk.CTkLabel(frame, text="Qual sistema vai ser usado nesta sessão?", text_color=TEXT_DIM).pack(pady=(0, 18))
+        for key, (label, _) in SYSTEMS.items():
+            ctk.CTkButton(frame, text=label, width=300, height=40, font=ctk.CTkFont(size=14, weight="bold"),
+                          fg_color=BUTTON_HOVER if key == last else BUTTON, hover_color="#4a4a4a",
+                          border_width=1 if key == last else 0, border_color=TEXT_MUTED,
+                          command=lambda k=key: choice.set(k)).pack(pady=6)
+
+        self.root.protocol("WM_DELETE_WINDOW", lambda: choice.set("__closed__"))
+        self.root.wait_variable(choice)
+        frame.destroy()
+        self.root.resizable(True, True)
+        return None if choice.get() == "__closed__" else choice.get()
+
     def _build_ui(self):
         sidebar = ctk.CTkFrame(self.root, width=280, fg_color=PANEL, corner_radius=0)
         sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         sidebar.pack_propagate(False)
 
-        ctk.CTkLabel(sidebar, text="FICHAS", font=ctk.CTkFont(family=TITLE_FONT, size=13, weight="bold"),
-                     text_color=TEXT_MUTED).pack(pady=(20, 4))
+        ctk.CTkLabel(sidebar, text=self.system_label.upper(), font=ctk.CTkFont(family=TITLE_FONT, size=14, weight="bold"),
+                     text_color="#ffffff").pack(pady=(20, 4))
         self.lbl_address = ctk.CTkLabel(sidebar, text="Iniciando servidor...", font=ctk.CTkFont(size=11),
                                         text_color=TEXT_DIM, justify=tk.CENTER)
         self.lbl_address.pack(pady=(0, 10))
@@ -204,52 +258,21 @@ class DMApp:
             self._add_local(path)
 
     def create_sheet(self):
-        choice = self._ask_new_sheet()
-        if not choice:
+        dialog = ctk.CTkInputDialog(title="Nova ficha", text=f"Nome do personagem ({self.system_label}):")
+        name = (dialog.get_input() or "").strip()
+        if not name:
             return
-        name, system = choice
         path = filedialog.asksaveasfilename(title="Salvar ficha nova", defaultextension=".json",
                                             initialdir=self._sheets_dir(), initialfile=f"{name}.json",
                                             filetypes=[("Fichas JSON", "*.json")])
         if not path:
             return
         try:
-            create_new_sheet(name, system, path)
+            create_new_sheet(name, self.system, path)
         except OSError as exc:
             messagebox.showerror("Erro", f"Não foi possível criar a ficha:\n{exc}")
             return
         self._add_local(path)
-
-    def _ask_new_sheet(self):
-        """Janela com nome + sistema. Devolve (nome, chave_do_sistema) ou None."""
-        dialog = ctk.CTkToplevel(self.root)
-        dialog.title("Nova ficha")
-        dialog.geometry("360x220")
-        dialog.resizable(False, False)
-        dialog.configure(fg_color=BG)
-        dialog.transient(self.root)
-        result = {}
-
-        ctk.CTkLabel(dialog, text="Nome do personagem", text_color=TEXT_DIM).pack(pady=(18, 4))
-        name = ctk.CTkEntry(dialog, width=280, fg_color=PANEL, border_color=BORDER)
-        name.pack()
-        ctk.CTkLabel(dialog, text="Sistema", text_color=TEXT_DIM).pack(pady=(12, 4))
-        labels = {label: key for key, (label, _) in SYSTEMS.items()}
-        system = ctk.CTkSegmentedButton(dialog, values=list(labels))
-        system.set(next(iter(labels)))
-        system.pack()
-
-        def confirm(_event=None):
-            if name.get().strip():
-                result["value"] = (name.get().strip(), labels[system.get()])
-                dialog.destroy()
-
-        ctk.CTkButton(dialog, text="Criar", fg_color=BUTTON, hover_color=BUTTON_HOVER, width=280,
-                      command=confirm).pack(pady=16)
-        name.bind("<Return>", confirm)
-        dialog.after(100, lambda: (dialog.grab_set(), name.focus_set()))
-        self.root.wait_window(dialog)
-        return result.get("value")
 
     def _add_local(self, path):
         sheet = self._load(path)
@@ -326,11 +349,20 @@ class DMApp:
 
     # ================================================================= utilidades
     def _load(self, path):
+        """Carrega uma ficha e garante que ela é do sistema da sessão."""
         try:
-            return load_sheet(path)
+            sheet = load_sheet(path)
         except (OSError, ValueError) as exc:
             messagebox.showerror("Erro ao abrir ficha", f"Não foi possível ler {os.path.basename(path)}:\n{exc}")
             return None
+        system = sheet.get("sistema")
+        if system != self.system:
+            other = SYSTEMS.get(system, (system or "desconhecido",))[0]
+            messagebox.showerror("Sistema diferente",
+                                 f"{os.path.basename(path)} é uma ficha de {other}, "
+                                 f"mas esta sessão é de {self.system_label}.")
+            return None
+        return sheet
 
     @staticmethod
     def _sheets_dir():
@@ -341,10 +373,14 @@ class DMApp:
         self.root.destroy()
 
     def run(self):
-        self.root.mainloop()
+        if not self.closed:
+            self.root.mainloop()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Janela do mestre")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    DMApp(port=parser.parse_args().port).run()
+    parser.add_argument("--sistema", choices=list(SYSTEMS),
+                        help="sistema da sessão (sem isso, o app pergunta ao abrir)")
+    args = parser.parse_args()
+    DMApp(port=args.port, system=args.sistema).run()

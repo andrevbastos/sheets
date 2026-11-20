@@ -21,11 +21,13 @@ uv sync
 ```
 uv run dm.py
 ```
+Ao abrir, o mestre escolhe o sistema da sessão (D&D 5e ou Ordem Paranormal); todas as fichas da sessão seguem esse sistema, e fichas de outro sistema são recusadas. Para pular a pergunta: `uv run dm.py --sistema ordem`.
+
 A barra lateral mostra o endereço que os jogadores devem digitar (ex.: `192.168.0.4:5000`). Na primeira vez, o Windows pergunta se o Python pode usar a rede: clique em **Permitir**, senão os outros PCs não conseguem conectar.
 
 - Quando um jogador conecta, ele aparece na lista. Clique nele para escolher o arquivo `.json` da ficha.
 - **Abrir ficha** abre um `.json` só para você ver e editar (sem jogador).
-- **Nova ficha** cria uma ficha em branco (você escolhe o sistema).
+- **Nova ficha** cria uma ficha em branco do sistema da sessão.
 - Tudo o que o mestre ou o jogador edita é salvo na hora no arquivo da ficha, no PC do mestre.
 
 **Jogador**

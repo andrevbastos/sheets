@@ -15,6 +15,7 @@ wheels/
 
 # Preferências locais do jogador
 .player-prefs.json
+.dm-prefs.json
 
 # Fichas de personagens (só o template e os exemplos vão para o git)
 sheets/*.json
