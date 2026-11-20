@@ -537,7 +537,7 @@ class SheetView(ctk.CTkFrame):
         return scroll
 
     def _list_rows(self, scroll, base_path, items, columns, keys, on_remove, first_bold=True, wrap_key=None,
-                   affixes=None):
+                   affixes=None, clamps=None):
         """Uma linha editável por item. `wrap_key` vai numa área de texto com quebra de linha embaixo.
         `affixes` = {chave: (texto antes, texto depois)} fixos ao redor do campo (ex.: "Pág." e "PE")."""
         affixes = affixes or {}
@@ -556,8 +556,9 @@ class SheetView(ctk.CTkFrame):
                 if before:
                     ctk.CTkLabel(line, text=before, font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).pack(
                         side=tk.LEFT, padx=(10, 0))
+                clamp = (lambda v, f=clamps[key], i=idx: f(i, v)) if clamps and key in clamps else None
                 entry = self._field(line, base_path + (idx, key), kind=kind, width=width, transparent=True,
-                                    bold=first_bold and c == 0, size=12 if c == 0 else 11,
+                                    clamp=clamp, bold=first_bold and c == 0, size=12 if c == 0 else 11,
                                     text_color=self.color if first_bold and c == 0 else TEXT,
                                     # colado no rótulo: "2 PE" alinha à direita, "Pág. 24" à esquerda
                                     justify="right" if after else "left" if before else
@@ -659,8 +660,11 @@ class SheetView(ctk.CTkFrame):
         load = ctk.CTkLabel(line2, text="", font=ctk.CTkFont(size=12, weight="bold"))
         load.pack(side=tk.LEFT)
         self._computed(lambda: load.configure(
-            text=f"{ordem.espacos_usados(self.sheet)} / {self.sheet['inventario']['carga_max']}",
+            text=f"{ordem.espacos_usados(self.sheet)} / {self.sheet['inventario']['carga_max']}"
+                 f"  (máx. {ordem.carga_absoluta(self.sheet)})",
             text_color=ERROR if ordem.sobrecarregado(self.sheet) else TEXT))
+        self.inv_msg = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=10, weight="bold"), text_color=ERROR, height=0)
+        self.inv_msg.pack(anchor=tk.W, padx=8)
 
         self.items_view = ctk.CTkFrame(view, fg_color="transparent")
         self.items_view.pack(fill=tk.BOTH, expand=True)
@@ -681,11 +685,36 @@ class SheetView(ctk.CTkFrame):
         def add(es):
             item = {"nome": es[0].get().strip(), "categoria": es[1].get().strip().upper(),
                     "espacos": max(0, to_int(es[2].get(), 1))}
+            livre = ordem.carga_absoluta(self.sheet) - ordem.espacos_usados(self.sheet)
+            if item["nome"] and item["espacos"] > livre:
+                self._inventory_warning(f"{item['nome']} não cabe: ocupa {item['espacos']} e só restam {max(0, livre)} "
+                                        f"espaços até o dobro da carga ({ordem.carga_absoluta(self.sheet)}).")
+                return
+            self._inventory_warning("")
             self._append(path, item, es, self._populate_items)
+
+        def clamp_espacos(idx, value):
+            """Aumentar os espaços de um item não pode passar do dobro da carga."""
+            itens = self.sheet["inventario"]["itens"]
+            outros = ordem.espacos_usados(self.sheet) - itens[idx]["espacos"]
+            limite = max(0, ordem.carga_absoluta(self.sheet) - outros)
+            if value > limite:
+                self._inventory_warning(f"Máximo de {limite} espaços para este item (dobro da carga: "
+                                        f"{ordem.carga_absoluta(self.sheet)}).")
+                return min(value, max(itens[idx]["espacos"], limite))  # pode manter ou reduzir, não aumentar
+            self._inventory_warning("")
+            return max(0, value)
 
         scroll = self._list_section(view, self.ITEM_COLS, ("Item", "Categoria", "Espaços"), add)
         self._list_rows(scroll, path, self.sheet["inventario"]["itens"], self.ITEM_COLS, keys,
-                        lambda i: self._remove(path, i, self._populate_items), first_bold=False)
+                        lambda i: self._remove(path, i, self._populate_items), first_bold=False,
+                        clamps={"espacos": clamp_espacos})
+
+    def _inventory_warning(self, text):
+        try:
+            self.inv_msg.configure(text=text, height=18 if text else 0)
+        except tk.TclError:
+            pass
 
     # Descrição
     def _build_description(self, view):

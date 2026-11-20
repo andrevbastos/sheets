@@ -71,6 +71,13 @@ def test_carga_e_sobrecarga():
     assert ordem.bonus_pericia(s, "luta") == 5         # as outras não
 
 
+def test_limite_absoluto_e_o_dobro_da_carga():
+    # p. 63: Força 2 carrega 10 sem penalidade e até 20 sobrecarregado
+    s = ficha(atributos={"agi": 1, "for": 2, "int": 1, "pre": 1, "vig": 1})
+    assert s["inventario"]["carga_max"] == 10 and ordem.carga_absoluta(s) == 20
+    assert ordem.carga_absoluta(ficha(atributos={"agi": 1, "for": 0, "int": 1, "pre": 1, "vig": 1})) == 4
+
+
 def test_patente_pelo_prestigio():
     s = ficha(inventario={"pontos_prestigio": 58})
     assert s["inventario"]["patente"] == "Agente especial"

@@ -215,6 +215,11 @@ def carga_maxima(sheet) -> int:
     return 5 * forca if forca > 0 else 2
 
 
+def carga_absoluta(sheet) -> int:
+    """Ninguém carrega mais que o dobro da carga máxima (p. 63)."""
+    return 2 * sheet.get("inventario", {}).get("carga_max", carga_maxima(sheet))
+
+
 def espacos_usados(sheet) -> int:
     return sum(item.get("espacos", 0) for item in sheet.get("inventario", {}).get("itens", []))
 

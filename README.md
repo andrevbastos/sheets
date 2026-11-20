@@ -9,7 +9,7 @@ Sistemas suportados:
   - Origem (as 26 do livro): as duas perícias da origem ficam Treinadas e o poder aparece resumido embaixo. Os poderes que mexem na ficha entram na conta: Calejado (+1 PV por NEX), Cicatrizes Psicológicas (+1 SAN por NEX), Dedicação (+PE e +1 PE por rodada), Patrulha (+2 Defesa), Patrocinador da Ordem (crédito um acima), Traços do Outro Lado (metade da SAN inicial). Ao trocar de origem, as perícias da antiga que estavam só em Treinado voltam a Destreinado.
   - PE por rodada (limite de PE) e DT de rituais (10 + limite de PE + PRE).
   - Perícias por grau (destreinado, treinado +5, veterano +10, expert +15); atributo 0 rola 2d20 e fica com o pior.
-  - Carga máxima (5 × FOR; 2 com FOR 0). Sobrecarregado: −5 na Defesa e nas perícias de carga.
+  - Carga máxima (5 × FOR; 2 com FOR 0). Sobrecarregado: −5 na Defesa e nas perícias de carga. Não dá para passar do dobro da carga: o inventário recusa o item ou limita os espaços.
   - Patente, limite de crédito e limite de itens por categoria a partir dos pontos de prestígio.
 
 ## Instalar
