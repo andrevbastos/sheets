@@ -6,6 +6,7 @@ calculados são redesenhados. Quando chega uma ficha nova pela rede, só os camp
 reescritos, e o campo em que a pessoa está digitando não é tocado.
 """
 import tkinter as tk
+import tkinter.font  # noqa: F401  (tk.font, usado para medir a altura das linhas)
 
 import customtkinter as ctk
 
@@ -155,11 +156,35 @@ class SheetView(ctk.CTkFrame):
         self.fields.append((menu, path, "grade"))
         return menu
 
-    def _textbox(self, parent, path):
-        box = ctk.CTkTextbox(parent, height=110, fg_color=INPUT, border_color=BORDER, border_width=1,
-                             font=ctk.CTkFont(size=11), wrap="word")
+    def _textbox(self, parent, path, auto_height=False, text_color=TEXT):
+        """Texto com quebra de linha. Com auto_height, a altura acompanha o tamanho do texto."""
+        box = ctk.CTkTextbox(parent, height=28 if auto_height else 110, wrap="word", font=ctk.CTkFont(size=11),
+                             text_color=text_color,
+                             fg_color="transparent" if auto_height else INPUT,
+                             border_color=BORDER, border_width=0 if auto_height else 1,
+                             activate_scrollbars=not auto_height)
         self._write(box, self._get(path), "text")
         self.fields.append((box, path, "text"))
+
+        if auto_height:
+            def fit(_event=None):
+                try:
+                    inner = box._textbox
+                    content = inner.count("1.0", "end", "ypixels")  # altura real do texto, já com as quebras
+                    content = content[0] if isinstance(content, tuple) else (content or 0)
+                    content = max(content, tk.font.Font(font=inner.cget("font")).metrics("linespace"))
+                    # + margens internas do CTkTextbox (pady do texto e 6 px do grid) e uma folga
+                    height = (content + 2 * int(inner.cget("pady"))) / box._get_widget_scaling() + 14
+                    if abs(box.cget("height") - height) > 1:
+                        box.configure(height=height)
+                except (tk.TclError, AttributeError):
+                    pass
+
+            box._fit = fit
+            box.bind("<KeyRelease>", fit)
+            box.bind("<FocusOut>", lambda e: box.after_idle(fit), add="+")
+            box._textbox.bind("<Configure>", fit, add="+")
+            box.after_idle(fit)
 
         def save(_event=None):
             try:
@@ -190,6 +215,8 @@ class SheetView(ctk.CTkFrame):
             value = self._get(path)
             if self._read(widget, kind) != self._display(value, kind):
                 self._write(widget, value, kind)
+                if hasattr(widget, "_fit"):
+                    widget.after_idle(widget._fit)
         self.fields = alive
 
     def _computed(self, fn):
@@ -509,21 +536,29 @@ class SheetView(ctk.CTkFrame):
         scroll.pack(fill=tk.BOTH, expand=True)
         return scroll
 
-    def _list_rows(self, scroll, base_path, items, columns, keys, on_remove, first_bold=True):
+    def _list_rows(self, scroll, base_path, items, columns, keys, on_remove, first_bold=True, wrap_key=None):
+        """Uma linha editável por item. `wrap_key` vai numa área de texto com quebra de linha embaixo."""
         for child in scroll.winfo_children():
             child.destroy()
         for idx in range(len(items)):
             row = ctk.CTkFrame(scroll, fg_color=PANEL)
             row.pack(fill=tk.X, pady=3, padx=4)
+            line = ctk.CTkFrame(row, fg_color="transparent")
+            line.pack(fill=tk.X)
             for c, ((width, expand), key) in enumerate(zip(columns, keys)):
+                if key == wrap_key:
+                    continue
                 kind = "int" if key == "espacos" else "str"
-                entry = self._field(row, base_path + (idx, key), kind=kind, width=width, transparent=True,
+                entry = self._field(line, base_path + (idx, key), kind=kind, width=width, transparent=True,
                                     bold=first_bold and c == 0, size=12 if c == 0 else 11,
                                     text_color=self.color if first_bold and c == 0 else TEXT,
                                     justify="center" if kind == "int" else "left")
                 entry.pack(side=tk.LEFT, padx=3, pady=3, fill=tk.X if expand else None, expand=expand)
-            small_button(row, "X", lambda i=idx: on_remove(i), width=24, danger=True,
+            small_button(line, "X", lambda i=idx: on_remove(i), width=24, danger=True,
                          height=20).pack(side=tk.RIGHT, padx=8)
+            if wrap_key:
+                self._textbox(row, base_path + (idx, wrap_key), auto_height=True,
+                              text_color=TEXT_DIM).pack(fill=tk.X, padx=6, pady=(0, 6))
 
     def _append(self, path, item, entries, repopulate):
         if not item.get("nome"):
@@ -582,7 +617,8 @@ class SheetView(ctk.CTkFrame):
             lambda es: self._append(("habilidades",), {k: e.get().strip() for k, e in zip(keys, es)}, es,
                                     self._populate_abilities))
         self._list_rows(scroll, ("habilidades",), self.sheet["habilidades"], self.ABILITY_COLS, keys,
-                        lambda i: self._remove(("habilidades",), i, self._populate_abilities))
+                        lambda i: self._remove(("habilidades",), i, self._populate_abilities),
+                        wrap_key="descricao")
 
     # Inventário
     ITEM_COLS = [(300, True), (80, False), (70, False)]
