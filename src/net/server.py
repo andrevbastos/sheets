@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 
 from src.net.protocol import (DEFAULT_PORT, HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT,
                               PROTOCOL_VERSION, Connection, ConnectionClosed)
+from src import dice
 from src.sheet_io import normalize_sheet, save_sheet
+
+DM_NAME = "Mestre"
+HISTORY_SIZE = 50
 
 
 @dataclass
@@ -32,6 +36,7 @@ class DNDServer:
         self.sock = None
         self.sessions: dict[str, Connection] = {}
         self.assignments: dict[str, Assignment] = {}
+        self.rolls = []  # histórico completo (o mestre vê tudo, inclusive as privadas)
         self.lock = threading.RLock()
         self._stopped = threading.Event()
 
@@ -39,6 +44,7 @@ class DNDServer:
         self.on_disconnect = None
         self.on_update = None
         self.on_error = None
+        self.on_roll = None         # on_roll(resultado completo), para a janela de dados do mestre
 
     # ------------------------------------------------------------------ ciclo de vida
     def start(self):
@@ -105,6 +111,26 @@ class DNDServer:
             assignment = self.assignments.get(name)
             return copy.deepcopy(assignment.sheet) if assignment else None
 
+    def roll(self, request: dict, who: str, private=False) -> dict:
+        """Rola um pedido e envia o resultado para todos (privada: os jogadores só sabem que houve)."""
+        req = dice.clean_request({**request, "private": private})
+        result = dice.roll(req, who)
+        with self.lock:
+            self.rolls = (self.rolls + [result])[-HISTORY_SIZE:]
+            conns = list(self.sessions.values())
+        public = dice.hidden(result) if result["private"] else result
+        for conn in conns:
+            conn.send({"type": "roll", "roll": public})
+        self._emit(self.on_roll, result)
+        return result
+
+    def roll_as_dm(self, request: dict, private=False) -> dict:
+        return self.roll(request, DM_NAME, private=private)
+
+    def _public_history(self):
+        with self.lock:
+            return [dice.hidden(r) if r["private"] else r for r in self.rolls]
+
     def forget(self, name: str):
         """Remove o vínculo (o mestre tirou o jogador da lista)."""
         with self.lock:
@@ -124,6 +150,9 @@ class DNDServer:
             if login.get("type") != "login" or not name:
                 conn.send({"type": "error", "msg": "Login inválido."})
                 return
+            if name.casefold() == DM_NAME.casefold():
+                conn.send({"type": "error", "msg": f'"{DM_NAME}" é reservado. Use o nome do personagem.'})
+                return
             if login.get("version") != PROTOCOL_VERSION:
                 conn.send({"type": "error", "msg": "Versão do app diferente da do mestre. Atualize os dois."})
                 name = None
@@ -139,7 +168,8 @@ class DNDServer:
                 old.send({"type": "kicked", "msg": "Outra conexão entrou com este personagem."})
                 old.close()
 
-            conn.send({"type": "welcome", "assigned": sheet is not None, "system": self.system})
+            conn.send({"type": "welcome", "assigned": sheet is not None, "system": self.system,
+                       "rolls": self._public_history()})
             if sheet is not None:
                 conn.send({"type": "sheet", "sheet": sheet})
             self._emit(self.on_connect, name, addr)
@@ -148,6 +178,11 @@ class DNDServer:
                 message = conn.recv()
                 if message.get("type") == "update":
                     self._apply_player_update(name, message.get("sheet"))
+                elif message.get("type") == "roll":
+                    try:
+                        self.roll(message.get("request") or {}, name)  # jogador nunca rola privado
+                    except (TypeError, ValueError):
+                        pass
         except ConnectionClosed:
             pass
         except Exception as exc:  # erro inesperado não pode derrubar o servidor

@@ -31,6 +31,8 @@ class DNDClient:
 
         self.on_status = None
         self.on_sheet = None
+        self.on_roll = None       # on_roll(rolagem) — uma rolagem nova de alguém da mesa
+        self.on_history = None    # on_history([rolagens]) — histórico completo ao (re)conectar
 
         self.state = CONNECTING
         self.system = None            # sistema da sessão, informado pelo mestre
@@ -59,6 +61,12 @@ class DNDClient:
             conn = self._conn if self.state == ONLINE else None
             if conn is None or not conn.send({"type": "update", "sheet": snapshot}):
                 self._pending = snapshot
+
+    def send_roll(self, request: dict) -> bool:
+        """Pede uma rolagem ao mestre. Devolve False se estiver sem conexão."""
+        with self._lock:
+            conn = self._conn if self.state in (ONLINE, WAITING) else None
+        return bool(conn and conn.send({"type": "roll", "request": request}))
 
     # ------------------------------------------------------------------ loop de rede
     def _set_state(self, state, msg=""):
@@ -94,10 +102,15 @@ class DNDClient:
                         accepted_once = True
                         attempt = 0
                         self.system = message.get("system")
+                        if self.on_history:
+                            self.on_history(message.get("rolls") or [])
                         if not message.get("assigned"):
                             self._set_state(WAITING, "Aguardando o mestre escolher sua ficha...")
                     elif kind == "sheet":
                         self._receive_sheet(conn, message.get("sheet"))
+                    elif kind == "roll":
+                        if self.on_roll and isinstance(message.get("roll"), dict):
+                            self.on_roll(message["roll"])
                     elif kind in ("error", "kicked"):
                         self._set_state(CLOSED, message.get("msg", "Conexão encerrada pelo mestre."))
                         self.close()

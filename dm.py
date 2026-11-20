@@ -13,7 +13,8 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from src.net.protocol import DEFAULT_PORT
-from src.net.server import DNDServer
+from src.net.server import DM_NAME, DNDServer
+from src.ui.dice_window import DiceWindow
 from src.sheet_io import SYSTEMS, create_new_sheet, load_sheet, save_sheet
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, PANEL_DARK, TEXT_DIM, TEXT_FAINT,
                            TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, allow_ctrl_c, bring_to_front,
@@ -93,6 +94,9 @@ class DMApp:
         self.server.on_disconnect = ui.wrap(self.on_player_disconnect)
         self.server.on_update = ui.wrap(self.on_player_update)
         self.server.on_error = ui.wrap(self.on_server_error)
+        self.server.on_roll = ui.wrap(self.on_roll)
+        self.rolls = []
+        self.dice_window = None
 
         self._build_ui()
         install_click_defocus(self.root)
@@ -152,6 +156,8 @@ class DMApp:
         for text, command in (("Abrir ficha", self.open_local_sheet), ("Nova ficha", self.create_sheet)):
             ctk.CTkButton(buttons, text=text, fg_color=BUTTON, hover_color=BUTTON_HOVER, height=28,
                           command=command).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=3)
+        ctk.CTkButton(sidebar, text="Dados", fg_color=BUTTON, hover_color=BUTTON_HOVER, height=30,
+                      font=ctk.CTkFont(size=13, weight="bold"), command=self.open_dice).pack(fill=tk.X, padx=13, pady=(8, 0))
 
         self.list_frame = ctk.CTkScrollableFrame(sidebar, fg_color="transparent")
         self.list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=10)
@@ -315,6 +321,20 @@ class DMApp:
             except OSError as exc:
                 self.on_server_error(None, f"Falha ao salvar {entry.filepath}: {exc}")
         self.refresh_sidebar()
+
+    # ================================================================= dados
+    def open_dice(self):
+        if self.dice_window is None or not self.dice_window.winfo_exists():
+            self.dice_window = DiceWindow(
+                self.root, DM_NAME, allow_private=True,
+                on_roll=lambda req: bool(self.server.roll_as_dm(req, private=req.get("private", False))))
+            self.dice_window.set_history(self.rolls)
+        self.dice_window.show()
+
+    def on_roll(self, result):
+        self.rolls = (self.rolls + [result])[-50:]
+        if self.dice_window is not None and self.dice_window.winfo_exists():
+            self.dice_window.add_roll(result)
 
     # ================================================================= eventos da rede
     def on_player_connect(self, name, addr):

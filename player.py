@@ -15,6 +15,7 @@ from src.net.protocol import DEFAULT_PORT
 from src.sheet_io import SYSTEMS
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, TEXT, TEXT_DIM, TITLE_FONT, WARN,
                            UiDispatcher, allow_ctrl_c, bring_to_front, install_click_defocus)
+from src.ui.dice_window import DiceWindow
 from src.ui.systems import make_sheet_view
 
 PREFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".player-prefs.json")
@@ -60,6 +61,8 @@ class PlayerApp:
         self.client: DNDClient | None = None
         self.view = None
         self.screen = None
+        self.rolls = []
+        self.dice_window = None
         self.show_login()
 
     # ================================================================= telas
@@ -111,6 +114,9 @@ class PlayerApp:
         ctk.CTkButton(self.status_bar, text="Desconectar", width=90, height=22, fg_color=BUTTON,
                       hover_color=BUTTON_HOVER, font=ctk.CTkFont(size=10),
                       command=self.disconnect).pack(side=tk.RIGHT, padx=8, pady=3)
+        ctk.CTkButton(self.status_bar, text="Dados", width=90, height=22, fg_color=BUTTON,
+                      hover_color=BUTTON_HOVER, font=ctk.CTkFont(size=11, weight="bold"),
+                      command=self.open_dice).pack(side=tk.RIGHT, padx=0, pady=3)
         self._set_conn_label(net.ONLINE)
 
         body = ctk.CTkFrame(screen, fg_color="transparent")
@@ -148,6 +154,8 @@ class PlayerApp:
         client = self.client
         self.client.on_status = lambda state, msg: self.ui.post(self.on_status, client, state, msg)
         self.client.on_sheet = lambda sheet: self.ui.post(self.on_sheet, client, sheet)
+        self.client.on_roll = lambda roll: self.ui.post(self.on_roll, client, roll)
+        self.client.on_history = lambda rolls: self.ui.post(self.on_history, client, rolls)
         self.lbl_login_status.configure(text="Conectando...", text_color=TEXT_DIM)
         self.btn_connect.configure(text="CANCELAR")
         for entry in (self.ip_entry, self.name_entry):
@@ -157,9 +165,12 @@ class PlayerApp:
     def on_status(self, client, state, msg):
         if client is not self.client:
             return  # evento atrasado de uma conexão antiga
+        if self.dice_window is not None and self.dice_window.winfo_exists():
+            self.dice_window.set_enabled(state in (net.ONLINE, net.WAITING))
         if state == net.CLOSED:
             was_in_sheet = self.view is not None
             self.client = None
+            self._close_dice()
             if was_in_sheet and msg:
                 messagebox.showwarning("Conexão encerrada", msg)
             self.show_login(msg, ERROR if msg else TEXT_DIM)
@@ -182,10 +193,40 @@ class PlayerApp:
         else:
             self.view.set_sheet(sheet)
 
+    # ================================================================= dados
+    def open_dice(self):
+        if self.client is None:
+            return
+        if self.dice_window is None or not self.dice_window.winfo_exists():
+            self.dice_window = DiceWindow(self.root, self.client.name, on_roll=self.client.send_roll)
+            self.dice_window.set_history(self.rolls)
+        self.dice_window.show()
+
+    def on_roll(self, client, roll):
+        if client is not self.client:
+            return
+        self.rolls = (self.rolls + [roll])[-50:]
+        if self.dice_window is not None and self.dice_window.winfo_exists():
+            self.dice_window.add_roll(roll)
+
+    def on_history(self, client, rolls):
+        if client is not self.client:
+            return
+        self.rolls = list(rolls)[-50:]
+        if self.dice_window is not None and self.dice_window.winfo_exists():
+            self.dice_window.set_history(self.rolls)
+
+    def _close_dice(self):
+        if self.dice_window is not None and self.dice_window.winfo_exists():
+            self.dice_window.destroy()
+        self.dice_window = None
+        self.rolls = []
+
     def disconnect(self):
         client, self.client = self.client, None
         if client:
             client.close()
+        self._close_dice()
         self.show_login()
 
     def on_close(self):

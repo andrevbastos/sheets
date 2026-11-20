@@ -41,6 +41,12 @@ uv run player.py
 ```
 Digite o endereço do mestre e o nome do personagem. Se a conexão cair (Wi-Fi, PC suspenso), a ficha continua aberta, o app reconecta sozinho e envia o que foi editado no meio tempo. O mestre não precisa escolher a ficha de novo.
 
+**Dados**
+
+O botão **Dados** (na barra lateral do mestre e na barra de cima do jogador) abre uma janela separada de rolagem. Escolha o dado, a quantidade, o bônus e, se for o caso, vantagem ou desvantagem com quantos dados extras (rola a mais e fica com os maiores ou menores). Quem rola é sempre o servidor do mestre, e todo mundo vê o resultado no histórico da mesa, por exemplo `Sofia — Ataque: 1d20 (Van 1) + 5 → [(13), 18] = 23` (o dado entre parênteses foi descartado).
+
+O mestre pode marcar **Privada**: os jogadores só veem "Mestre fez uma rolagem privada", sem o valor.
+
 **Criar ficha pela linha de comando**
 ```
 uv run main.py "Gimli"
@@ -62,6 +68,8 @@ src/ordem.py              perícias, regras do livro e normalização de Ordem P
 src/ui/dnd5e_sheet.py     tela da ficha de D&D 5e
 src/ui/ordem_sheet.py     tela da ficha de Ordem Paranormal
 src/ui/systems.py         escolhe a tela pelo campo "sistema" da ficha
+src/dice.py               rolagem de dados (vantagem/desvantagem, privada)
+src/ui/dice_window.py     janela separada de rolagem
 sheets/                   template e fichas de exemplo
 tests/                    testes (uv run pytest)
 ```

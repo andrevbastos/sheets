@@ -203,6 +203,40 @@ def test_sessao_informa_o_sistema_e_recusa_ficha_de_outro(sheet_file, tmp_path):
         srv.stop()
 
 
+def test_rolagens_vao_para_todos_e_privada_fica_escondida(server):
+    a, b = make_client(server, "Ana"), make_client(server, "Beto")
+    for c in (a, b):
+        c.on_roll = Recorder()
+    assert wait_for(lambda: a.state == cl.WAITING and b.state == cl.WAITING)
+    dm_rolls = Recorder()
+    server.on_roll = dm_rolls
+
+    assert a.send_roll({"sides": 20, "bonus": 3, "private": True})  # jogador não consegue rolar privado
+    assert wait_for(lambda: b.on_roll.last() is not None)
+    roll = b.on_roll.last()[0]
+    assert roll["who"] == "Ana" and not roll["private"] and 4 <= roll["total"] <= 23
+
+    server.roll_as_dm({"sides": 6, "qty": 2}, private=True)
+    assert wait_for(lambda: a.on_roll.last()[0].get("hidden"))
+    assert "total" not in a.on_roll.last()[0]           # jogador não vê o resultado
+    assert dm_rolls.last()[0]["total"] >= 2             # mestre vê
+
+    # quem conecta depois recebe o histórico (com a privada escondida)
+    c = DNDClient("127.0.0.1", "Caio", port=server.port, **HB)
+    c.on_history = Recorder()
+    c.start()
+    assert wait_for(lambda: c.on_history.last() is not None)
+    history = c.on_history.last()[0]
+    assert [r["who"] for r in history] == ["Ana", "Mestre"] and "total" not in history[1]
+    for x in (a, b, c):
+        x.close()
+
+
+def test_nome_mestre_e_reservado(server):
+    c = make_client(server, "mestre")
+    assert wait_for(lambda: c.state == cl.CLOSED)
+
+
 def test_versao_diferente_e_recusada(server):
     raw = socket.create_connection(("127.0.0.1", server.port))
     send_msg(raw, {"type": "login", "name": "Velho", "version": 1})
