@@ -59,6 +59,58 @@ CLASSES = {
     "ocultista": {"nome": "Ocultista", "pv": (12, 2, "vig"), "pe": (4, 4, "pre"), "san": (20, 5, None)},
 }
 
+# Origens (Tabela 1.1, p. 29; descrições p. 26-31): duas perícias treinadas + um poder.
+# "resumo" é um resumo curto do poder (não é o texto do livro).
+ORIGENS = {
+    "academico": ("Acadêmico", ("ciencias", "investigacao"), "Saber é Poder", "2 PE: +5 num teste de Intelecto."),
+    "agente de saude": ("Agente de Saúde", ("intuicao", "medicina"), "Técnica Medicinal",
+                        "Soma o Intelecto nos PV que cura."),
+    "amnesico": ("Amnésico", (), "Vislumbres do Passado",
+                 "Perícias à escolha do mestre. 1x por sessão, teste de INT (DT 10) para reconhecer algo do passado."),
+    "artista": ("Artista", ("artes", "enganacao"), "Magnum Opus",
+                "1x por missão, alguém o reconhece: +5 em testes de Presença contra essa pessoa."),
+    "atleta": ("Atleta", ("acrobacia", "atletismo"), "110%",
+               "2 PE: +5 num teste de perícia de FOR ou AGI (exceto Luta e Pontaria)."),
+    "chef": ("Chef", ("fortitude", "profissao"), "Ingrediente Secreto",
+             "No interlúdio, o grupo que comer recebe o benefício de dois pratos."),
+    "criminoso": ("Criminoso", ("crime", "furtividade"), "O Crime Compensa",
+                  "Um item achado na missão vem na próxima sem contar no limite."),
+    "cultista arrependido": ("Cultista Arrependido", ("ocultismo", "religiao"), "Traços do Outro Lado",
+                             "Um poder paranormal à escolha; Sanidade inicial pela metade."),
+    "desgarrado": ("Desgarrado", ("fortitude", "sobrevivencia"), "Calejado", "+1 PV por nível de NEX."),
+    "engenheiro": ("Engenheiro", ("profissao", "tecnologia"), "Ferramenta Favorita",
+                   "Um item (não arma) conta uma categoria abaixo."),
+    "executivo": ("Executivo", ("diplomacia", "profissao"), "Processo Otimizado",
+                  "2 PE: +5 em teste estendido ou ao revisar documentos."),
+    "investigador": ("Investigador", ("investigacao", "percepcao"), "Faro para Pistas",
+                     "1x por cena, 1 PE: +5 para procurar pistas."),
+    "lutador": ("Lutador", ("luta", "reflexos"), "Mão Pesada", "+2 no dano corpo a corpo."),
+    "magnata": ("Magnata", ("diplomacia", "pilotagem"), "Patrocinador da Ordem", "Limite de crédito um acima."),
+    "mercenario": ("Mercenário", ("iniciativa", "intimidacao"), "Posição de Combate",
+                   "1º turno da cena de ação, 2 PE: ação de movimento extra."),
+    "militar": ("Militar", ("pontaria", "tatica"), "Para Bellum", "+2 no dano com armas de fogo."),
+    "operario": ("Operário", ("fortitude", "profissao"), "Ferramenta de Trabalho",
+                 "Uma arma-ferramenta: proficiência e +1 em ataque, dano e margem de ameaça."),
+    "policial": ("Policial", ("percepcao", "pontaria"), "Patrulha", "+2 na Defesa."),
+    "religioso": ("Religioso", ("religiao", "vontade"), "Acalentar",
+                  "+5 em Religião para acalmar; quem é acalmado recupera 1d6+PRE de SAN."),
+    "servidor publico": ("Servidor Público", ("intuicao", "vontade"), "Espírito Cívico",
+                         "1 PE: +2 no bônus quando ajuda alguém."),
+    "teorico da conspiracao": ("Teórico da Conspiração", ("investigacao", "ocultismo"), "Eu Já Sabia",
+                               "Resistência a dano mental igual ao Intelecto."),
+    "t.i.": ("T.I.", ("investigacao", "tecnologia"), "Motor de Busca",
+             "Com internet, 2 PE: troca um teste de perícia por Tecnologia."),
+    "trabalhador rural": ("Trabalhador Rural", ("adestramento", "sobrevivencia"), "Desbravador",
+                          "2 PE: +5 em Adestramento ou Sobrevivência; ignora terreno difícil."),
+    "trambiqueiro": ("Trambiqueiro", ("crime", "enganacao"), "Impostor",
+                     "1x por cena, 2 PE: troca um teste de perícia por Enganação."),
+    "universitario": ("Universitário", ("atualidades", "investigacao"), "Dedicação",
+                      "+1 PE e +1 a cada NEX ímpar (15%, 25%…); +1 no limite de PE por rodada."),
+    "vitima": ("Vítima", ("reflexos", "vontade"), "Cicatrizes Psicológicas", "+1 SAN por nível de NEX."),
+}
+ORIGEM_NOMES = [o[0] for o in ORIGENS.values()]
+CREDITOS = ["Baixo", "Médio", "Alto", "Ilimitado"]
+
 # Níveis de exposição válidos (Tabela 1.2, p. 33)
 NEX_LEVELS = list(range(5, 100, 5)) + [99]
 
@@ -76,6 +128,25 @@ PATENTES = [
 def _plain(text) -> str:
     text = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode()
     return text.strip().lower()
+
+
+def _sem_genero(text) -> str:
+    """'universitária' e 'teórica da conspiração' casam com a forma do livro (masculino)."""
+    return " ".join(w[:-1] if len(w) > 3 and w[-1] in "ao" else w for w in _plain(text).split())
+
+
+_ORIGENS_POR_NOME = {_sem_genero(key): key for key in ORIGENS}
+
+
+def origin_key(sheet):
+    """Chave da origem ("investigador"...) ou None se for outra/vazia."""
+    return _ORIGENS_POR_NOME.get(_sem_genero(sheet.get("origem")))
+
+
+def origem_info(sheet):
+    """(nome, perícias, poder, resumo) da origem, ou None."""
+    key = origin_key(sheet)
+    return ORIGENS[key] if key else None
 
 
 def class_key(sheet):
@@ -98,19 +169,38 @@ def nex_nivel(sheet) -> int:
 
 
 def limite_pe(sheet) -> int:
-    """Limite de PE por turno (Tabela 1.2, p. 33): igual ao nível de exposição."""
+    """Limite de PE por turno (Tabela 1.2, p. 33): igual ao nível de exposição. É o que entra nas DTs."""
     return nex_nivel(sheet)
 
 
+def pe_por_rodada(sheet) -> int:
+    """Limite de PE por rodada mostrado na ficha. Universitário (Dedicação, p. 31) tem +1, sem mudar as DTs."""
+    return limite_pe(sheet) + (1 if origin_key(sheet) == "universitario" else 0)
+
+
+def bonus_de_origem(sheet, key) -> int:
+    """PV/PE/SAN extras dados pelo poder da origem (p. 28 e 31)."""
+    origem, niveis = origin_key(sheet), nex_nivel(sheet)
+    if key == "pv" and origem == "desgarrado":       # Calejado: +1 PV por 5% de NEX
+        return niveis
+    if key == "san" and origem == "vitima":          # Cicatrizes Psicológicas: +1 SAN por 5% de NEX
+        return niveis
+    if key == "pe" and origem == "universitario":    # Dedicação: +1 PE, +1 a cada NEX ímpar (15%, 25%…)
+        return 1 + sum(1 for level in range(15, 100, 10) if level <= sheet.get("nex", 5))
+    return 0
+
+
 def recurso_calculado(sheet, key):
-    """Máximo de PV/PE/SAN pela classe, NEX e atributo (p. 33-43), ou None se a classe é outra."""
+    """Máximo de PV/PE/SAN pela classe, NEX e atributo (p. 33-43) e pela origem, ou None se a classe é outra."""
     cls = class_key(sheet)
     if cls is None:
         return None
     inicial, por_nex, attr = CLASSES[cls][key]
+    if key == "san" and origin_key(sheet) == "cultista arrependido":
+        inicial //= 2  # Traços do Outro Lado: começa com metade da Sanidade da classe
     bonus_attr = sheet["atributos"].get(attr, 0) if attr else 0
     niveis_extras = nex_nivel(sheet) - 1
-    return inicial + bonus_attr + niveis_extras * (por_nex + bonus_attr)
+    return inicial + bonus_attr + niveis_extras * (por_nex + bonus_attr) + bonus_de_origem(sheet, key)
 
 
 def dt_rituais(sheet) -> int:
@@ -139,7 +229,10 @@ def patente(sheet):
     for row in PATENTES:
         if pp >= row[0]:
             atual = row
-    return atual[1], atual[2], dict(zip(CATEGORIAS, atual[3]))
+    credito = atual[2]
+    if origin_key(sheet) == "magnata":  # Patrocinador da Ordem: crédito um acima (p. 30)
+        credito = CREDITOS[min(CREDITOS.index(credito) + 1, len(CREDITOS) - 1)]
+    return atual[1], credito, dict(zip(CATEGORIAS, atual[3]))
 
 
 def itens_por_categoria(sheet) -> dict:
@@ -151,10 +244,16 @@ def itens_por_categoria(sheet) -> dict:
     return counts
 
 
+def defesa_origem(sheet) -> int:
+    """Policial (Patrulha, p. 30): +2 na Defesa."""
+    return 2 if origin_key(sheet) == "policial" else 0
+
+
 def defesa_total(sheet) -> int:
-    """Defesa (p. 46): 10 + AGI + equipamento + outros; sobrecarregado sofre −5 (p. 63)."""
+    """Defesa (p. 46): 10 + AGI + equipamento + outros (+ origem); sobrecarregado sofre −5 (p. 63)."""
     d = sheet.get("defesa", {})
-    total = 10 + sheet.get("atributos", {}).get("agi", 0) + d.get("equipamento", 0) + d.get("outros", 0)
+    total = (10 + sheet.get("atributos", {}).get("agi", 0) + d.get("equipamento", 0) + d.get("outros", 0)
+             + defesa_origem(sheet))
     return total - 5 if sobrecarregado(sheet) else total
 
 
@@ -173,11 +272,31 @@ def dados(sheet, attr) -> str:
     return f"{valor}d20" if valor > 0 else "2d20↓"
 
 
+def _aplicar_pericias_da_origem(sheet):
+    """As duas perícias da origem ficam no mínimo Treinado (p. 26).
+
+    `origem_pericias` guarda o que a origem atual deu; ao trocar de origem, as perícias da antiga
+    que ainda estão só em Treinado voltam a Destreinado (as que subiram para Veterano/Expert ficam).
+    """
+    info = origem_info(sheet)
+    novas = list(info[1]) if info else []
+    for key in sheet.get("origem_pericias", []):
+        p = sheet["pericias"].get(key)
+        if key not in novas and p and p["treino"] == 5:
+            p["treino"] = 0
+    for key in novas:
+        sheet["pericias"][key]["treino"] = max(sheet["pericias"][key]["treino"], 5)
+    if origin_key(sheet) == "chef" and not sheet.get("profissao_nome"):
+        sheet["profissao_nome"] = "cozinheiro"
+    sheet["origem_pericias"] = novas
+
+
 def apply_rules(sheet: dict) -> dict:
     """Grava na ficha (no lugar) tudo o que as regras definem. Devolve a própria ficha."""
     sheet["nex"] = nex_valido(sheet.get("nex", 5))
-    sheet["pe_rodada"] = limite_pe(sheet)
+    sheet["pe_rodada"] = pe_por_rodada(sheet)
     sheet["dt_rituais"] = dt_rituais(sheet)
+    _aplicar_pericias_da_origem(sheet)
 
     for key, _, _ in RECURSOS:
         res = sheet[key]
@@ -231,6 +350,8 @@ def normalize(sheet: dict, to_int, clean_list) -> dict:
         treino = max(g for g in graus if g <= max(0, min(treino, 15)))  # só 0/5/10/15
         s["pericias"][key] = {"treino": treino, "outros": to_int(p.get("outros"), 0)}
     s["profissao_nome"] = str(s.get("profissao_nome") or "")
+    anteriores = s.get("origem_pericias") if isinstance(s.get("origem_pericias"), list) else []
+    s["origem_pericias"] = [k for k in anteriores if k in s["pericias"]]
 
     s["ataques"] = [
         {k: str(a.get(k) or "") for k in ("nome", "teste", "dano", "especial")}

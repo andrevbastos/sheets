@@ -87,12 +87,49 @@ def test_grau_de_treino_e_dados():
 
 def test_exemplo_de_ordem():
     s = load_sheet("sheets/ordem-example.json")
-    # Ocultista NEX 10%, VIG 1, PRE 2
-    assert (s["pv"]["max"], s["pe"]["max"], s["san"]["max"]) == (16, 12, 25)
+    # Ocultista NEX 10%, VIG 1, PRE 2, origem Universitária (Dedicação: +1 PE, +1 no limite por rodada)
+    assert (s["pv"]["max"], s["pe"]["max"], s["san"]["max"]) == (16, 12 + 1, 25)
     assert s["pv"]["atual"] == 13
-    assert s["dt_rituais"] == 14
+    assert s["pe_rodada"] == 3
+    assert s["dt_rituais"] == 14  # Dedicação não muda a DT
     assert ordem.bonus_pericia(s, "ocultismo") == 7
     assert not ordem.sobrecarregado(s)
+
+
+def test_origem_treina_as_duas_pericias():
+    s = ficha(origem="Investigador")
+    assert s["pericias"]["investigacao"]["treino"] == 5 and s["pericias"]["percepcao"]["treino"] == 5
+    assert ordem.origem_info(s)[2] == "Faro para Pistas"
+
+
+def test_trocar_de_origem_devolve_as_pericias_da_antiga():
+    s = ficha(origem="Investigador", pericias={"investigacao": {"treino": 10}})
+    s["origem"] = "Atleta"
+    ordem.apply_rules(s)
+    assert s["pericias"]["percepcao"]["treino"] == 0        # era só da origem: volta
+    assert s["pericias"]["investigacao"]["treino"] == 10    # tinha subido para veterano: fica
+    assert s["pericias"]["acrobacia"]["treino"] == 5 and s["pericias"]["atletismo"]["treino"] == 5
+
+
+def test_origem_no_feminino_e_sem_acento():
+    assert ordem.origin_key(ficha(origem="universitaria")) == "universitario"
+    assert ordem.origin_key(ficha(origem="Teórica da Conspiração")) == "teorico da conspiracao"
+    assert ordem.origin_key(ficha(origem="ti")) is None
+    assert ordem.origin_key(ficha(origem="T.I.")) == "t.i."
+
+
+def test_poderes_de_origem_que_mudam_a_ficha():
+    nex20 = dict(classe="Combatente", nex=20, atributos={"agi": 1, "for": 1, "int": 1, "pre": 1, "vig": 1})
+    base = ficha(**nex20)
+    assert ficha(origem="Desgarrado", **nex20)["pv"]["max"] == base["pv"]["max"] + 4       # +1 por nível (4)
+    assert ficha(origem="Vítima", **nex20)["san"]["max"] == base["san"]["max"] + 4
+    uni = ficha(origem="Universitário", **nex20)
+    assert uni["pe"]["max"] == base["pe"]["max"] + 2                                     # 5% e 15%
+    assert uni["pe_rodada"] == base["pe_rodada"] + 1 and uni["dt_rituais"] == base["dt_rituais"]
+    assert ordem.defesa_total(ficha(origem="Policial", **nex20)) == ordem.defesa_total(base) + 2
+    assert ficha(origem="Magnata")["inventario"]["limite_credito"] == "Médio"             # recruta: Baixo -> Médio
+    assert ficha(origem="Cultista Arrependido", classe="Ocultista")["san"]["max"] == 10   # metade de 20
+    assert ficha(origem="Chef")["profissao_nome"] == "cozinheiro"
 
 
 def test_classe_desconhecida_mantem_valores_digitados():

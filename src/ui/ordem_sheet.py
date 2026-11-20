@@ -297,9 +297,13 @@ class SheetView(ctk.CTkFrame):
         grid.pack(fill=tk.X, padx=12, pady=10)
         grid.grid_columnconfigure(1, weight=1)
         self._caption(grid, "ORIGEM").grid(row=0, column=0, sticky="w", pady=3, padx=(0, 8))
-        self._field(grid, ("origem",), width=200).grid(row=0, column=1, sticky="ew", pady=3)
-        self._caption(grid, "CLASSE").grid(row=1, column=0, sticky="w", pady=3, padx=(0, 8))
-        self._combo(grid, ("classe",), CLASS_NAMES).grid(row=1, column=1, sticky="ew", pady=3)
+        self._combo(grid, ("origem",), ordem.ORIGEM_NOMES).grid(row=0, column=1, sticky="ew", pady=3)
+        origin_info = ctk.CTkLabel(grid, text="", font=ctk.CTkFont(size=10), text_color=TEXT_DIM,
+                                   wraplength=280, justify=tk.LEFT, anchor="w")
+        origin_info.grid(row=1, column=1, sticky="ew", pady=(0, 4))
+        self._computed(lambda: origin_info.configure(text=self._origin_text()))
+        self._caption(grid, "CLASSE").grid(row=2, column=0, sticky="w", pady=3, padx=(0, 8))
+        self._combo(grid, ("classe",), CLASS_NAMES).grid(row=2, column=1, sticky="ew", pady=3)
 
         small = ctk.CTkFrame(card, fg_color="transparent")
         small.pack(fill=tk.X, padx=12, pady=(0, 10))
@@ -318,9 +322,18 @@ class SheetView(ctk.CTkFrame):
         self._field(nex, ("nex",), kind="int", width=40, size=15, bold=True, justify="center", transparent=True,
                     clamp=ordem.nex_valido).pack(side=tk.LEFT)
         ctk.CTkLabel(nex, text="%", text_color=TEXT_MUTED).pack(side=tk.LEFT)
-        self._value_label(box(1, "PE / RODADA"), lambda: ordem.limite_pe(self.sheet)).pack(pady=2)
+        self._value_label(box(1, "PE / RODADA"), lambda: ordem.pe_por_rodada(self.sheet)).pack(pady=2)
         self._field(box(2, "DESLOCAMENTO"), ("deslocamento",), width=60, size=15, bold=True, justify="center",
                     transparent=True).pack()
+
+    def _origin_text(self):
+        info = ordem.origem_info(self.sheet)
+        if info is None:
+            return "Escolha uma origem da lista para aplicar as perícias e o poder." if self.sheet.get("origem") else ""
+        nome, pericias, poder, resumo = info
+        nomes = {key: n for key, n, *_ in ordem.PERICIAS}
+        treinadas = " e ".join(nomes[k] for k in pericias) or "à escolha do mestre"
+        return f"Treinadas: {treinadas}.\n{poder}: {resumo}"
 
     def _build_status(self, parent):
         card = self._card(parent, None, fill=tk.X, pady=(0, 10))
@@ -391,7 +404,9 @@ class SheetView(ctk.CTkFrame):
         formula.pack(side=tk.LEFT, padx=10)
         agi = ctk.CTkLabel(formula, text="", font=ctk.CTkFont(size=12), text_color=TEXT_DIM)
         agi.pack(side=tk.LEFT)
-        self._computed(lambda: agi.configure(text=f"= 10 + AGI ({self.sheet['atributos']['agi']}) +"))
+        self._computed(lambda: agi.configure(
+            text=f"= 10 + AGI ({self.sheet['atributos']['agi']})"
+                 + (f" + {ordem.defesa_origem(self.sheet)} origem" if ordem.defesa_origem(self.sheet) else "") + " +"))
         for idx, (label, key) in enumerate((("Equip.", "equipamento"), ("Outros", "outros"))):
             col = ctk.CTkFrame(formula, fg_color="transparent")
             col.pack(side=tk.LEFT, padx=3)
