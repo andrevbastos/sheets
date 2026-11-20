@@ -20,10 +20,14 @@ def make_sheet_view(master, sheet: dict, on_change=None):
     return view_class(master, sheet, on_change=on_change)
 
 
-def life(sheet: dict):
-    """(rótulo, atual, máximo) da vida do personagem, para resumos como a barra lateral do mestre."""
+def resources(sheet: dict):
+    """Recursos para resumos como a barra lateral do mestre: [(sigla, atual, máximo, cor ou None)].
+
+    Cor None = verde/vermelho conforme o quanto resta.
+    """
     if sheet.get("sistema") == ordem_sheet.SYSTEM:
-        pv = sheet.get("pv", {})
-        return "PV", pv.get("atual", 0), pv.get("max", 0)
+        return [(sigla, sheet.get(key, {}).get("atual", 0), sheet.get(key, {}).get("max", 0),
+                 ordem_sheet.RESOURCE_COLORS[key])
+                for key, sigla in (("pv", "PV"), ("san", "SAN"))]
     combate = sheet.get("combate", {})
-    return "HP", combate.get("hp_atual", 0), combate.get("hp_max", 0)
+    return [("HP", combate.get("hp_atual", 0), combate.get("hp_max", 0), None)]

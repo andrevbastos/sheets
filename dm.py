@@ -19,7 +19,7 @@ from src.sheet_io import SYSTEMS, create_new_sheet, load_sheet, save_sheet
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, PANEL_DARK, TEXT_DIM, TEXT_FAINT,
                            TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, allow_ctrl_c, bring_to_front,
                            install_click_defocus)
-from src.ui.systems import life, make_sheet_view
+from src.ui.systems import make_sheet_view, resources
 
 PREFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dm-prefs.json")
 
@@ -188,10 +188,8 @@ class DMApp:
         selected = entry.key == self.selected
         color = entry.sheet.get("cor", "#ffffff") if entry.sheet else "#888888"
         card = ctk.CTkFrame(self.list_frame, fg_color="#222222" if selected else PANEL_DARK, corner_radius=8,
-                            border_width=2 if selected else 1, border_color=color if selected and entry.sheet else BORDER,
-                            height=74)
+                            border_width=2 if selected else 1, border_color=color if selected and entry.sheet else BORDER)
         card.pack(fill=tk.X, pady=5)
-        card.pack_propagate(False)
         widgets = [card]
 
         top = ctk.CTkFrame(card, fg_color="transparent")
@@ -210,21 +208,30 @@ class DMApp:
                           text_color=TEXT_MUTED, command=lambda k=entry.key: self.remove_entry(k)).pack(side=tk.RIGHT)
 
         if entry.sheet:
-            label, hp, hp_max = life(entry.sheet)
-            ratio = hp / max(1, hp_max)
-            bar = ctk.CTkProgressBar(card, fg_color=BUTTON, progress_color=OK if ratio > 0.3 else ERROR, height=5)
-            bar.pack(fill=tk.X, padx=10, pady=(6, 2))
-            bar.set(ratio)
-            widgets.append(bar)
-            if entry.is_player:
-                status = f"{label}: {hp} / {hp_max}" + ("" if entry.online else "  ·  desconectado")
-            else:
-                status = f"{label}: {hp} / {hp_max}  ·  ficha local"
+            for sigla, atual, maximo, res_color in resources(entry.sheet):
+                ratio = atual / max(1, maximo)
+                row = ctk.CTkFrame(card, fg_color="transparent")
+                row.pack(fill=tk.X, padx=10, pady=(4, 0))
+                lbl_sigla = ctk.CTkLabel(row, text=sigla, width=30, height=16, anchor="w",
+                                         font=ctk.CTkFont(size=10, weight="bold"), text_color=res_color or TEXT_DIM)
+                lbl_sigla.pack(side=tk.LEFT)
+                lbl_val = ctk.CTkLabel(row, text=f"{atual}/{maximo}", width=48, height=16, anchor="e",
+                                       font=ctk.CTkFont(size=10), text_color=TEXT_DIM)
+                lbl_val.pack(side=tk.RIGHT)
+                bar = ctk.CTkProgressBar(row, fg_color=BUTTON, height=6,
+                                         progress_color=res_color or (OK if ratio > 0.3 else ERROR))
+                bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
+                bar.set(ratio)
+                widgets += [row, lbl_sigla, lbl_val, bar]
+            status = "" if entry.online else ("desconectado" if entry.is_player else "ficha local")
         else:
             status = "Sem ficha (clique para escolher)"
-        lbl = ctk.CTkLabel(card, text=status, font=ctk.CTkFont(size=10), text_color=TEXT_DIM if entry.sheet else WARN)
-        lbl.pack(anchor=tk.W, padx=10, pady=(1, 4))
-        widgets.append(lbl)
+        if status:
+            lbl = ctk.CTkLabel(card, text=status, font=ctk.CTkFont(size=10), height=16,
+                               text_color=TEXT_FAINT if entry.sheet else WARN)
+            lbl.pack(anchor=tk.W, padx=10)
+            widgets.append(lbl)
+        ctk.CTkFrame(card, fg_color="transparent", height=6).pack()  # respiro embaixo
 
         for widget in widgets:
             widget.bind("<Button-1>", lambda e, k=entry.key: self.select(k))

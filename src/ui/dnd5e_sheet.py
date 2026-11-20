@@ -99,8 +99,8 @@ class SheetView(ctk.CTkFrame):
                 self._defocus()
 
         for entry in entries:
-            entry.bind("<Return>", lambda e: guarded(True))
-            entry.bind("<FocusOut>", lambda e: guarded(False))
+            entry.bind("<Return>", lambda *_: guarded(True))
+            entry.bind("<FocusOut>", lambda *_: guarded(False))
 
     def _get_color(self):
         return self.color
@@ -185,7 +185,7 @@ class SheetView(ctk.CTkFrame):
         self.hp_input = ctk.CTkEntry(controls, width=55, height=22, fg_color=INPUT, border_color=BORDER,
                                      font=ctk.CTkFont(size=11), placeholder_text="Val")
         self.hp_input.pack(side=tk.LEFT, padx=4)
-        self.hp_input.bind("<Return>", lambda e: (self._set_hp_from_input(), self._defocus()))
+        self.hp_input.bind("<Return>", lambda *_: (self._set_hp_from_input(), self._defocus()))
         small_button(controls, "Def", self._set_hp_from_input).pack(side=tk.LEFT, padx=3)
         for delta in (1, 5):
             small_button(controls, f"+{delta}", lambda d=delta: self._adjust_hp(d)).pack(side=tk.LEFT, padx=3)
@@ -277,7 +277,7 @@ class SheetView(ctk.CTkFrame):
         self.item_entry = ctk.CTkEntry(add_row, placeholder_text="Adicionar item ao inventário...",
                                        fg_color=INPUT, border_color=BORDER)
         self.item_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-        self.item_entry.bind("<Return>", lambda e: (self._add_item(), self._defocus()))
+        self.item_entry.bind("<Return>", lambda *_: (self._add_item(), self._defocus()))
         ctk.CTkButton(add_row, text="Adicionar", fg_color=BUTTON, hover_color=BUTTON_HOVER, width=80,
                       command=self._add_item).pack(side=tk.RIGHT)
         self.inv_scroll = ctk.CTkScrollableFrame(inv, fg_color=PANEL_DARK)
@@ -330,8 +330,8 @@ class SheetView(ctk.CTkFrame):
         button = ctk.CTkButton(ctrl, text="Adicionar", fg_color=BUTTON, hover_color=BUTTON_HOVER, width=80, height=26,
                                font=ctk.CTkFont(size=11), command=lambda: on_add(first, second))
         button.pack(side=tk.RIGHT, padx=(5, 0))
-        first.bind("<Return>", lambda e: button.invoke())
-        second.bind("<Return>", lambda e: button.invoke())
+        first.bind("<Return>", lambda *_: button.invoke())
+        second.bind("<Return>", lambda *_: button.invoke())
         return first, second, button
 
     def _editable_pair_row(self, parent, item, on_save, on_remove):
@@ -607,8 +607,8 @@ class SheetView(ctk.CTkFrame):
             name.configure(state="disabled")
             effect.configure(state="disabled")
         else:
-            name.bind("<Return>", lambda e: button.invoke())
-            effect.bind("<Return>", lambda e: button.invoke())
+            name.bind("<Return>", lambda *_: button.invoke())
+            effect.bind("<Return>", lambda *_: button.invoke())
 
         scroll = ctk.CTkScrollableFrame(view, fg_color=PANEL_DARK)
         scroll.pack(fill=tk.BOTH, expand=True)

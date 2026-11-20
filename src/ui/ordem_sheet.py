@@ -124,8 +124,8 @@ class SheetView(ctk.CTkFrame):
             if defocus:
                 self.winfo_toplevel().focus()
 
-        entry.bind("<Return>", lambda e: save(True))
-        entry.bind("<FocusOut>", lambda e: save(False))
+        entry.bind("<Return>", lambda *_: save(True))
+        entry.bind("<FocusOut>", lambda *_: save(False))
         return entry
 
     def _combo(self, parent, path, values, width=200):
@@ -182,7 +182,7 @@ class SheetView(ctk.CTkFrame):
 
             box._fit = fit
             box.bind("<KeyRelease>", fit)
-            box.bind("<FocusOut>", lambda e: box.after_idle(fit), add="+")
+            box.bind("<FocusOut>", lambda *_: box.after_idle(fit), add="+")
             box._textbox.bind("<Configure>", fit, add="+")
             box.after_idle(fit)
 
@@ -531,7 +531,7 @@ class SheetView(ctk.CTkFrame):
                                font=ctk.CTkFont(size=11), command=lambda: on_add(entries))
         button.pack(side=tk.RIGHT, padx=(5, 0))
         for entry in entries:
-            entry.bind("<Return>", lambda e: button.invoke())
+            entry.bind("<Return>", lambda *_: button.invoke())
         scroll = ctk.CTkScrollableFrame(view, fg_color=PANEL_DARK)
         scroll.pack(fill=tk.BOTH, expand=True)
         return scroll

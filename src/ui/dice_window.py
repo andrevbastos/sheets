@@ -31,7 +31,7 @@ class DiceWindow(ctk.CTkToplevel):
         self.protocol("WM_DELETE_WINDOW", self.withdraw)  # fechar só esconde
         self.lines = []
         self._build(allow_private)
-        self.bind("<Return>", lambda e: self.roll())
+        self.bind("<Return>", lambda *_: self.roll())
 
     def show(self):
         self.deiconify()
