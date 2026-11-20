@@ -1,0 +1,258 @@
+{
+  "nome": "Personagem de Exemplo",
+  "cor": "#d4af37",
+  "classe_nivel": "Guerreiro 1",
+  "raca": "Humano",
+  "antecedente": "Herói do Povo",
+  "tendencia": "Leal e Bom",
+  "experiencia": 0,
+  "combate": {
+    "hp_max": 12,
+    "hp_atual": 12,
+    "ca": 16,
+    "iniciativa": 2,
+    "deslocamento": "9m"
+  },
+  "atributos": {
+    "forca": {
+      "valor": 16,
+      "mod": 3
+    },
+    "destreza": {
+      "valor": 14,
+      "mod": 2
+    },
+    "constituicao": {
+      "valor": 15,
+      "mod": 2
+    },
+    "inteligencia": {
+      "valor": 10,
+      "mod": 0
+    },
+    "sabedoria": {
+      "valor": 12,
+      "mod": 1
+    },
+    "carisma": {
+      "valor": 8,
+      "mod": -1
+    }
+  },
+  "resistencia": {
+    "forca": {
+      "bonus": 5,
+      "proficiente": true
+    },
+    "destreza": {
+      "bonus": 2,
+      "proficiente": false
+    },
+    "constituicao": {
+      "bonus": 4,
+      "proficiente": true
+    },
+    "inteligencia": {
+      "bonus": 0,
+      "proficiente": false
+    },
+    "sabedoria": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "carisma": {
+      "bonus": -1,
+      "proficiente": false
+    }
+  },
+  "pericias": {
+    "acrobacia": {
+      "bonus": 2,
+      "proficiente": false
+    },
+    "adestramento": {
+      "bonus": 3,
+      "proficiente": true
+    },
+    "arcanismo": {
+      "bonus": 0,
+      "proficiente": false
+    },
+    "atletismo": {
+      "bonus": 5,
+      "proficiente": true
+    },
+    "atuacao": {
+      "bonus": -1,
+      "proficiente": false
+    },
+    "blefar": {
+      "bonus": -1,
+      "proficiente": false
+    },
+    "furtividade": {
+      "bonus": 2,
+      "proficiente": false
+    },
+    "historia": {
+      "bonus": 0,
+      "proficiente": false
+    },
+    "intimidacao": {
+      "bonus": -1,
+      "proficiente": false
+    },
+    "intuicao": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "investigacao": {
+      "bonus": 0,
+      "proficiente": false
+    },
+    "medicina": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "natureza": {
+      "bonus": 0,
+      "proficiente": false
+    },
+    "percepcao": {
+      "bonus": 3,
+      "proficiente": true
+    },
+    "persuasao": {
+      "bonus": -1,
+      "proficiente": false
+    },
+    "prestidigitacao": {
+      "bonus": 2,
+      "proficiente": false
+    },
+    "religiao": {
+      "bonus": 0,
+      "proficiente": false
+    },
+    "sobrevivencia": {
+      "bonus": 3,
+      "proficiente": true
+    }
+  },
+  "magias": {
+    "classe_conjurador": "Nenhum",
+    "cd_salvamento": 8,
+    "bonus_ataque": 0,
+    "slots": {
+      "1": {
+        "atual": 1,
+        "max": 1
+      },
+      "2": {
+        "atual": 0,
+        "max": 0
+      },
+      "3": {
+        "atual": 0,
+        "max": 0
+      },
+      "4": {
+        "atual": 0,
+        "max": 0
+      },
+      "5": {
+        "atual": 0,
+        "max": 0
+      },
+      "6": {
+        "atual": 0,
+        "max": 0
+      },
+      "7": {
+        "atual": 0,
+        "max": 0
+      },
+      "8": {
+        "atual": 0,
+        "max": 0
+      },
+      "9": {
+        "atual": 0,
+        "max": 0
+      }
+    },
+    "lista": [
+      {
+        "nome": "Truque de Exemplo",
+        "descricao": "Descrição do truque ou magia de exemplo."
+      }
+    ]
+  },
+  "ataques": [
+    {
+      "nome": "ESPADA GRANDE",
+      "descricao": "Bônus: +5 | Dano: 2d6+3 (Cortante)"
+    },
+    {
+      "nome": "ARCO LONGO",
+      "descricao": "Bônus: +4 | Dano: 1d8+2 (Perfurante)"
+    }
+  ],
+  "recursos": [
+    {
+      "nome": "Retomar o Fôlego",
+      "atual": 1,
+      "max": 1,
+      "detalhes": "Recupera 1d10 + nível de guerreiro HP por descanso curto."
+    },
+    {
+      "nome": "Surto de Ação",
+      "atual": 1,
+      "max": 1,
+      "detalhes": "Ganha uma ação adicional no seu turno."
+    }
+  ],
+  "inventario": [
+    "Cota de Malha (CA 16)",
+    "Espada Grande",
+    "Arco Longo",
+    "Aljava com 20 flechas",
+    "Pacote de Explorador",
+    "Símbolo Sagrado",
+    "15 Peças de Ouro (PO)"
+  ],
+  "idiomas": [
+    "Comum",
+    "Anão"
+  ],
+  "proficiencias": [
+    "Todas as armaduras",
+    "Escudos",
+    "Armas simples e marciais"
+  ],
+  "caracteristicas": [
+    {
+      "nome": "Estilo de Combate (Defesa)",
+      "detalhes": "+1 na CA quando estiver usando armadura."
+    }
+  ],
+  "extra": {
+    "recursos de classe": [
+      {
+        "nome": "Dado de Vida (d10)",
+        "valor_atual": "2",
+        "valor_maximo": "2",
+        "detalhes": "Usado para determinar os pontos de vida recuperados após um descanso."
+      }
+    ],
+    "cartas_destino": {
+      "maximo": 3,
+      "lista": [
+        {
+          "nome": "O Sol",
+          "efeito": "Vantagem em testes de Carisma"
+        }
+      ]
+    }
+  }
+}

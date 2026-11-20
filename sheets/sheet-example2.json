@@ -1,0 +1,237 @@
+{
+  "nome": "Kara",
+  "cor": "#e74c3c",
+  "classe_nivel": "Ladino 1",
+  "raca": "Elfo da Floresta",
+  "antecedente": "Criminoso",
+  "tendencia": "Caótico e Neutro",
+  "experiencia": 0,
+  "combate": {
+    "hp_max": 9,
+    "hp_atual": 8,
+    "ca": 14,
+    "iniciativa": 3,
+    "deslocamento": "10.5m"
+  },
+  "atributos": {
+    "forca": {
+      "valor": 10,
+      "mod": 0
+    },
+    "destreza": {
+      "valor": 16,
+      "mod": 3
+    },
+    "constituicao": {
+      "valor": 12,
+      "mod": 1
+    },
+    "inteligencia": {
+      "valor": 13,
+      "mod": 1
+    },
+    "sabedoria": {
+      "valor": 14,
+      "mod": 2
+    },
+    "carisma": {
+      "valor": 8,
+      "mod": -1
+    }
+  },
+  "resistencia": {
+    "forca": {
+      "bonus": 0,
+      "proficiente": false
+    },
+    "destreza": {
+      "bonus": 5,
+      "proficiente": true
+    },
+    "constituicao": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "inteligencia": {
+      "bonus": 3,
+      "proficiente": true
+    },
+    "sabedoria": {
+      "bonus": 2,
+      "proficiente": false
+    },
+    "carisma": {
+      "bonus": -1,
+      "proficiente": false
+    }
+  },
+  "pericias": {
+    "acrobacia": {
+      "bonus": 5,
+      "proficiente": true
+    },
+    "adestramento": {
+      "bonus": 2,
+      "proficiente": false
+    },
+    "arcanismo": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "atletismo": {
+      "bonus": 0,
+      "proficiente": false
+    },
+    "atuacao": {
+      "bonus": -1,
+      "proficiente": false
+    },
+    "blefar": {
+      "bonus": -1,
+      "proficiente": false
+    },
+    "furtividade": {
+      "bonus": 7,
+      "proficiente": true
+    },
+    "historia": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "intimidacao": {
+      "bonus": -1,
+      "proficiente": false
+    },
+    "intuicao": {
+      "bonus": 2,
+      "proficiente": false
+    },
+    "investigacao": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "medicina": {
+      "bonus": 2,
+      "proficiente": false
+    },
+    "natureza": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "percepcao": {
+      "bonus": 4,
+      "proficiente": true
+    },
+    "persuasao": {
+      "bonus": -1,
+      "proficiente": false
+    },
+    "prestidigitacao": {
+      "bonus": 5,
+      "proficiente": true
+    },
+    "religiao": {
+      "bonus": 1,
+      "proficiente": false
+    },
+    "sobrevivencia": {
+      "bonus": 2,
+      "proficiente": false
+    }
+  },
+  "magias": {
+    "classe_conjurador": "Nenhuma",
+    "cd_salvamento": 8,
+    "bonus_ataque": 0,
+    "slots": {
+      "1": {
+        "atual": 0,
+        "max": 0
+      },
+      "2": {
+        "atual": 0,
+        "max": 0
+      },
+      "3": {
+        "atual": 0,
+        "max": 0
+      },
+      "4": {
+        "atual": 0,
+        "max": 0
+      },
+      "5": {
+        "atual": 0,
+        "max": 0
+      },
+      "6": {
+        "atual": 0,
+        "max": 0
+      },
+      "7": {
+        "atual": 0,
+        "max": 0
+      },
+      "8": {
+        "atual": 0,
+        "max": 0
+      },
+      "9": {
+        "atual": 0,
+        "max": 0
+      }
+    },
+    "lista": []
+  },
+  "ataques": [
+    {
+      "nome": "Adaga",
+      "descricao": "Bônus: +5 | Dano: 1d4+3 (Perfurante) | Arremesso 6m/18m"
+    },
+    {
+      "nome": "Arco Curto",
+      "descricao": "Bônus: +5 | Dano: 1d6+3 (Perfurante) | Distância 24m/96m"
+    }
+  ],
+  "recursos": [
+    {
+      "nome": "Ataque Furtivo",
+      "atual": 1,
+      "max": 1,
+      "detalhes": "+1d6 de dano uma vez por turno contra inimigo com vantagem ou aliado adjacente."
+    }
+  ],
+  "inventario": [
+    "Armadura de Couro (CA 11 + Des)",
+    "Duas Adagas",
+    "Arco Curto com aljava de 20 flechas",
+    "Ferramentas de Ladrão",
+    "Pacote de Assaltante",
+    "10 Peças de Ouro (PO)"
+  ],
+  "idiomas": [
+    "Comum",
+    "Élfico",
+    "Gíria de Ladrão"
+  ],
+  "proficiencias": [
+    "Armaduras leves",
+    "Armas simples",
+    "Bestas de mão",
+    "Espadas curtas, longas e rapieiras",
+    "Ferramentas de Ladrão"
+  ],
+  "caracteristicas": [
+    {
+      "nome": "Especialização (Expertise)",
+      "detalhes": "Bônus de proficiência dobrado em Furtividade e Ferramentas de Ladrão."
+    }
+  ],
+  "extra": {
+    "recursos de classe": [],
+    "cartas_destino": {
+      "maximo": 3,
+      "lista": []
+    }
+  }
+}

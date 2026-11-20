@@ -1,0 +1,122 @@
+{
+  "nome": "{{nome_do_personagem}}",
+  "cor": "{{cor_ui_hex}}",
+  "classe_nivel": "{{classe_e_nivel}}",
+  "raca": "{{raca}}",
+  "antecedente": "{{antecedente}}",
+  "tendencia": "{{tendencia}}",
+  "experiencia": "{{pontos_de_experiencia}}",
+  "combate": {
+    "hp_max": "{{vida_maxima}}",
+    "hp_atual": "{{vida_atual}}",
+    "ca": "{{classe_de_armadura}}",
+    "iniciativa": "{{bonus_iniciativa}}",
+    "deslocamento": "{{deslocamento}}"
+  },
+  "atributos": {
+    "forca": {"valor": "{{valor_forca}}", "mod": "{{modificador_forca}}"},
+    "destreza": {"valor": "{{valor_destreza}}", "mod": "{{modificador_destreza}}"},
+    "constituicao": {"valor": "{{valor_constituicao}}", "mod": "{{modificador_constituicao}}"},
+    "inteligencia": {"valor": "{{valor_inteligencia}}", "mod": "{{modificador_inteligencia}}"},
+    "sabedoria": {"valor": "{{valor_sabedoria}}", "mod": "{{modificador_sabedoria}}"},
+    "carisma": {"valor": "{{valor_carisma}}", "mod": "{{modificador_carisma}}"}
+  },
+  "resistencia": {
+    "forca": {"bonus": "{{tr_forca}}", "proficiente": "{{proficiente_tr_forca}}"},
+    "destreza": {"bonus": "{{tr_destreza}}", "proficiente": "{{proficiente_tr_destreza}}"},
+    "constituicao": {"bonus": "{{tr_constituicao}}", "proficiente": "{{proficiente_tr_constituicao}}"},
+    "inteligencia": {"bonus": "{{tr_inteligencia}}", "proficiente": "{{proficiente_tr_inteligencia}}"},
+    "sabedoria": {"bonus": "{{tr_sabedoria}}", "proficiente": "{{proficiente_tr_sabedoria}}"},
+    "carisma": {"bonus": "{{tr_carisma}}", "proficiente": "{{proficiente_tr_carisma}}"}
+  },
+  "pericias": {
+    "acrobacia": {"bonus": "{{bonus_acrobacia}}", "proficiente": "{{proficiente_acrobacia}}"},
+    "adestramento": {"bonus": "{{bonus_adestramento}}", "proficiente": "{{proficiente_adestramento}}"},
+    "arcanismo": {"bonus": "{{bonus_arcanismo}}", "proficiente": "{{proficiente_arcanismo}}"},
+    "atletismo": {"bonus": "{{bonus_atletismo}}", "proficiente": "{{proficiente_atletismo}}"},
+    "atuacao": {"bonus": "{{bonus_atuacao}}", "proficiente": "{{proficiente_atuacao}}"},
+    "blefar": {"bonus": "{{bonus_blefar}}", "proficiente": "{{proficiente_blefar}}"},
+    "furtividade": {"bonus": "{{bonus_furtividade}}", "proficiente": "{{proficiente_furtividade}}"},
+    "historia": {"bonus": "{{bonus_historia}}", "proficiente": "{{proficiente_historia}}"},
+    "intimidacao": {"bonus": "{{bonus_intimidacao}}", "proficiente": "{{proficiente_intimidacao}}"},
+    "intuicao": {"bonus": "{{bonus_intuicao}}", "proficiente": "{{proficiente_intuicao}}"},
+    "investigacao": {"bonus": "{{bonus_investigacao}}", "proficiente": "{{proficiente_investigacao}}"},
+    "medicina": {"bonus": "{{bonus_medicina}}", "proficiente": "{{proficiente_medicina}}"},
+    "natureza": {"bonus": "{{bonus_natureza}}", "proficiente": "{{proficiente_natureza}}"},
+    "percepcao": {"bonus": "{{bonus_percepcao}}", "proficiente": "{{proficiente_percepcao}}"},
+    "persuasao": {"bonus": "{{bonus_persuasao}}", "proficiente": "{{proficiente_persuasao}}"},
+    "prestidigitacao": {"bonus": "{{bonus_prestidigitacao}}", "proficiente": "{{proficiente_prestidigitacao}}"},
+    "religiao": {"bonus": "{{bonus_religiao}}", "proficiente": "{{proficiente_religiao}}"},
+    "sobrevivencia": {"bonus": "{{bonus_sobrevivencia}}", "proficiente": "{{proficiente_sobrevivencia}}"}
+  },
+  "magias": {
+    "classe_conjurador": "{{classe_conjuradora}}",
+    "cd_salvamento": "{{cd_salvamento_magia}}",
+    "bonus_ataque": "{{bonus_ataque_magico}}",
+    "slots": {
+      "1": {"atual": "{{slots_1_atual}}", "max": "{{slots_1_total}}"},
+      "2": {"atual": "{{slots_2_atual}}", "max": "{{slots_2_total}}"},
+      "3": {"atual": "{{slots_3_atual}}", "max": "{{slots_3_total}}"},
+      "4": {"atual": "{{slots_4_atual}}", "max": "{{slots_4_total}}"},
+      "5": {"atual": "{{slots_5_atual}}", "max": "{{slots_5_total}}"},
+      "6": {"atual": "{{slots_6_atual}}", "max": "{{slots_6_total}}"},
+      "7": {"atual": "{{slots_7_atual}}", "max": "{{slots_7_total}}"},
+      "8": {"atual": "{{slots_8_atual}}", "max": "{{slots_8_total}}"},
+      "9": {"atual": "{{slots_9_atual}}", "max": "{{slots_9_total}}"}
+    },
+    "lista": [
+      {
+        "nome": "{{nome_da_magia_ou_truque}}",
+        "descricao": "{{descricao_efeito_e_detalhes}}"
+      }
+    ]
+  },
+  "ataques": [
+    {
+      "nome": "{{nome_da_arma}}",
+      "descricao": "{{descricao_do_ataque}}"
+    }
+  ],
+  "recursos": [
+    {
+      "nome": "{{nome_do_recurso}}",
+      "atual": "{{recurso_atual}}",
+      "max": "{{recurso_total}}",
+      "detalhes": "{{descricao_do_recurso}}"
+    }
+  ],
+  "inventario": [
+    "{{item_do_inventario}}"
+  ],
+  "idiomas": [
+    "{{idioma}}"
+  ],
+  "proficiencias": [
+    "{{proficiencia}}"
+  ],
+  "caracteristicas": [
+    {
+      "nome": "{{nome_da_habilidade_ou_talento}}",
+      "detalhes": "{{descricao_da_habilidade_ou_talento}}"
+    }
+  ],
+  "extra": {
+    "recursos de classe": [
+      {
+        "nome": "{{nome_do_recurso_de_classe}}",
+        "valor_atual": "{{valor_atual}}",
+        "valor_maximo": "{{valor_maximo}}",
+        "detalhes": "{{detalhes_do_recurso_de_classe}}"
+      }
+    ],
+    "cartas_destino": {
+      "maximo": "{{cartas_destino_max}}",
+      "lista": [
+        {
+          "nome": "{{nome_da_carta}}",
+          "efeito": "{{efeito_da_carta}}"
+        }
+      ]
+    }
+  }
+}
