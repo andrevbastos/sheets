@@ -9,7 +9,6 @@
   "protecao": "",
   "resistencias": "",
   "nex": 5,
-  "pe_rodada": 1,
   "atributos": {
     "agi": 1,
     "for": 1,
@@ -19,15 +18,18 @@
   },
   "pv": {
     "max": 0,
-    "atual": 0
+    "atual": 0,
+    "bonus": 0
   },
   "pe": {
     "max": 0,
-    "atual": 0
+    "atual": 0,
+    "bonus": 0
   },
   "san": {
     "max": 0,
-    "atual": 0
+    "atual": 0,
+    "bonus": 0
   },
   "defesa": {
     "equipamento": 0,
@@ -150,24 +152,25 @@
   "profissao_nome": "",
   "ataques": [],
   "habilidades": [],
-  "dt_rituais": 0,
   "inventario": {
     "pontos_prestigio": 0,
-    "patente": "",
+    "itens": [],
+    "carga_max": 5,
+    "patente": "Recruta",
+    "limite_credito": "Baixo",
     "limite_itens": {
-      "I": 0,
+      "I": 2,
       "II": 0,
       "III": 0,
       "IV": 0
-    },
-    "limite_credito": "",
-    "carga_max": 0,
-    "itens": []
+    }
   },
   "descricao": {
     "aparencia": "",
     "personalidade": "",
     "historico": "",
     "objetivo": ""
-  }
+  },
+  "pe_rodada": 1,
+  "dt_rituais": 12
 }

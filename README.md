@@ -4,7 +4,12 @@ App de fichas para mesa presencial ou em rede local. O mestre abre o servidor, c
 
 Sistemas suportados:
 - **D&D 5e**
-- **Ordem Paranormal**: segue a ficha oficial. Todos os campos são editáveis na tela; o app só calcula o que a própria ficha mostra (Defesa = 10 + AGI + Equip. + Outros, e o bônus de cada perícia = Treino + Outros).
+- **Ordem Paranormal**: segue a ficha oficial, com as regras do livro básico calculadas sozinhas:
+  - PV, PE e SAN máximos pela classe (Combatente, Especialista, Ocultista), NEX, Vigor e Presença. Cada um tem um campo de **bônus** para poderes e desvantagens. Com outra classe, os máximos são digitados à mão.
+  - PE por rodada (limite de PE) e DT de rituais (10 + limite de PE + PRE).
+  - Perícias por grau (destreinado, treinado +5, veterano +10, expert +15); atributo 0 rola 2d20 e fica com o pior.
+  - Carga máxima (5 × FOR; 2 com FOR 0). Sobrecarregado: −5 na Defesa e nas perícias de carga.
+  - Patente, limite de crédito e limite de itens por categoria a partir dos pontos de prestígio.
 
 ## Instalar
 
@@ -53,7 +58,7 @@ src/sheet_io.py           ler/salvar/normalizar fichas
 src/net/protocol.py       mensagens JSON + heartbeat
 src/net/server.py         servidor do mestre
 src/net/client.py         cliente do jogador (com reconexão)
-src/ordem.py              perícias, cálculos e normalização de Ordem Paranormal
+src/ordem.py              perícias, regras do livro e normalização de Ordem Paranormal
 src/ui/dnd5e_sheet.py     tela da ficha de D&D 5e
 src/ui/ordem_sheet.py     tela da ficha de Ordem Paranormal
 src/ui/systems.py         escolhe a tela pelo campo "sistema" da ficha
