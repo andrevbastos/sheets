@@ -559,7 +559,9 @@ class SheetView(ctk.CTkFrame):
                 entry = self._field(line, base_path + (idx, key), kind=kind, width=width, transparent=True,
                                     bold=first_bold and c == 0, size=12 if c == 0 else 11,
                                     text_color=self.color if first_bold and c == 0 else TEXT,
-                                    justify="center" if kind == "int" or key in affixes else "left")
+                                    # colado no rótulo: "2 PE" alinha à direita, "Pág. 24" à esquerda
+                                    justify="right" if after else "left" if before else
+                                    "center" if kind == "int" else "left")
                 entry.pack(side=tk.LEFT, padx=3, pady=3, fill=tk.X if expand else None, expand=expand)
                 if after:
                     ctk.CTkLabel(line, text=after, font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).pack(
