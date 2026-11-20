@@ -536,8 +536,11 @@ class SheetView(ctk.CTkFrame):
         scroll.pack(fill=tk.BOTH, expand=True)
         return scroll
 
-    def _list_rows(self, scroll, base_path, items, columns, keys, on_remove, first_bold=True, wrap_key=None):
-        """Uma linha editável por item. `wrap_key` vai numa área de texto com quebra de linha embaixo."""
+    def _list_rows(self, scroll, base_path, items, columns, keys, on_remove, first_bold=True, wrap_key=None,
+                   affixes=None):
+        """Uma linha editável por item. `wrap_key` vai numa área de texto com quebra de linha embaixo.
+        `affixes` = {chave: (texto antes, texto depois)} fixos ao redor do campo (ex.: "Pág." e "PE")."""
+        affixes = affixes or {}
         for child in scroll.winfo_children():
             child.destroy()
         for idx in range(len(items)):
@@ -549,11 +552,18 @@ class SheetView(ctk.CTkFrame):
                 if key == wrap_key:
                     continue
                 kind = "int" if key == "espacos" else "str"
+                before, after = affixes.get(key, (None, None))
+                if before:
+                    ctk.CTkLabel(line, text=before, font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).pack(
+                        side=tk.LEFT, padx=(10, 0))
                 entry = self._field(line, base_path + (idx, key), kind=kind, width=width, transparent=True,
                                     bold=first_bold and c == 0, size=12 if c == 0 else 11,
                                     text_color=self.color if first_bold and c == 0 else TEXT,
-                                    justify="center" if kind == "int" else "left")
+                                    justify="center" if kind == "int" or key in affixes else "left")
                 entry.pack(side=tk.LEFT, padx=3, pady=3, fill=tk.X if expand else None, expand=expand)
+                if after:
+                    ctk.CTkLabel(line, text=after, font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).pack(
+                        side=tk.LEFT, padx=(0, 10))
             small_button(line, "X", lambda i=idx: on_remove(i), width=24, danger=True,
                          height=20).pack(side=tk.RIGHT, padx=8)
             if wrap_key:
@@ -592,7 +602,7 @@ class SheetView(ctk.CTkFrame):
                         lambda i: self._remove(("ataques",), i, self._populate_attacks))
 
     # Habilidades & Rituais
-    ABILITY_COLS = [(150, True), (55, False), (45, False), (170, True)]
+    ABILITY_COLS = [(150, True), (40, False), (40, False), (170, True)]
 
     def _build_abilities(self, view):
         top = ctk.CTkFrame(view, fg_color="transparent")
@@ -613,12 +623,12 @@ class SheetView(ctk.CTkFrame):
             child.destroy()
         keys = ("nome", "custo", "pagina", "descricao")
         scroll = self._list_section(
-            view, self.ABILITY_COLS, ("Habilidade ou ritual", "Custo", "Pág.", "Descrição"),
+            view, self.ABILITY_COLS, ("Habilidade ou ritual", "PE", "Pág.", "Descrição"),
             lambda es: self._append(("habilidades",), {k: e.get().strip() for k, e in zip(keys, es)}, es,
                                     self._populate_abilities))
         self._list_rows(scroll, ("habilidades",), self.sheet["habilidades"], self.ABILITY_COLS, keys,
                         lambda i: self._remove(("habilidades",), i, self._populate_abilities),
-                        wrap_key="descricao")
+                        wrap_key="descricao", affixes={"custo": (None, "PE"), "pagina": ("Pág.", None)})
 
     # Inventário
     ITEM_COLS = [(300, True), (80, False), (70, False)]

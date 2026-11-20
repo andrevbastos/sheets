@@ -4,6 +4,7 @@ As regras vêm do livro básico (páginas citadas em cada função). `apply_rule
 valores derivados na própria ficha, então o JSON salvo e o que a rede envia já vêm calculados.
 """
 import copy
+import re
 import unicodedata
 
 SYSTEM = "ordem"
@@ -358,8 +359,11 @@ def normalize(sheet: dict, to_int, clean_list) -> dict:
         for a in clean_list(s.get("ataques")) if isinstance(a, dict)
     ]
     s["habilidades"] = [
-        {"nome": str(h.get("nome") or ""), "custo": str(h.get("custo") or ""),
-         "pagina": str(h.get("pagina") or ""), "descricao": str(h.get("descricao") or "")}
+        {"nome": str(h.get("nome") or ""),
+         # a tela já mostra "PE" e "Pág.", então o valor guardado é só o número
+         "custo": re.sub(r"\s*PE\s*$", "", str(h.get("custo") or ""), flags=re.I),
+         "pagina": re.sub(r"^\s*p[áa]g\.?\s*", "", str(h.get("pagina") or ""), flags=re.I),
+         "descricao": str(h.get("descricao") or "")}
         for h in clean_list(s.get("habilidades")) if isinstance(h, dict)
     ]
 
