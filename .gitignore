@@ -10,4 +10,13 @@ wheels/
 .venv
 .python/
 
+# Preferências locais do jogador
+.player-prefs.json
+
+# Fichas de personagens (só o template e os exemplos vão para o git)
+sheets/*.json
+!sheets/sheet-template.json
+!sheets/sheet-example.json
+!sheets/sheet-example2.json
+
 .agents

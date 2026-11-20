@@ -1,9 +1,18 @@
 [project]
 name = "sheet"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Fichas de RPG em rede local: o mestre acompanha e edita as fichas dos jogadores em tempo real."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "customtkinter>=5.2.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
