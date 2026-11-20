@@ -4,7 +4,16 @@ import json
 import os
 import tempfile
 
+from src import ordem
+
 SHEET_SYSTEM_DND5E = "dnd5e"
+SHEETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sheets")
+
+# Sistemas disponíveis: chave -> (nome para mostrar, template)
+SYSTEMS = {
+    SHEET_SYSTEM_DND5E: ("D&D 5e", os.path.join(SHEETS_DIR, "sheet-template.json")),
+    ordem.SYSTEM: ("Ordem Paranormal", os.path.join(SHEETS_DIR, "ordem-template.json")),
+}
 
 
 def load_sheet(filepath: str) -> dict:
@@ -40,7 +49,11 @@ def clean_placeholders(data, character_name: str):
 
 
 def create_new_sheet(character_name: str, template_path: str, output_path: str) -> dict:
-    """Cria uma ficha limpa a partir do template, normaliza e salva em output_path."""
+    """Cria uma ficha limpa a partir do template, normaliza e salva em output_path.
+
+    `template_path` pode ser um caminho ou a chave de um sistema ("dnd5e", "ordem")."""
+    if template_path in SYSTEMS:
+        template_path = SYSTEMS[template_path][1]
     with open(template_path, "r", encoding="utf-8") as file:
         template_data = json.load(file)
     sheet = normalize_sheet(clean_placeholders(template_data, character_name))
@@ -97,6 +110,12 @@ def _clean_list(items) -> list:
 
 def normalize_sheet(sheet: dict) -> dict:
     """Devolve uma cópia da ficha com números como int, booleanos como bool e listas sem itens vazios."""
+    if isinstance(sheet, dict) and sheet.get("sistema") == ordem.SYSTEM:
+        return ordem.normalize(sheet, to_int, _clean_list)
+    return _normalize_dnd5e(sheet)
+
+
+def _normalize_dnd5e(sheet: dict) -> dict:
     s = copy.deepcopy(sheet) if isinstance(sheet, dict) else {}
 
     s.setdefault("sistema", SHEET_SYSTEM_DND5E)

@@ -1,6 +1,10 @@
 # Fichas de RPG em rede
 
-App de fichas para mesa presencial ou em rede local. O mestre abre o servidor, cada jogador conecta pelo próprio PC, e a ficha sincroniza nos dois sentidos em tempo real. Hoje suporta D&D 5e.
+App de fichas para mesa presencial ou em rede local. O mestre abre o servidor, cada jogador conecta pelo próprio PC, e a ficha sincroniza nos dois sentidos em tempo real.
+
+Sistemas suportados:
+- **D&D 5e**
+- **Ordem Paranormal**: segue a ficha oficial. Todos os campos são editáveis na tela; o app só calcula o que a própria ficha mostra (Defesa = 10 + AGI + Equip. + Outros, e o bônus de cada perícia = Treino + Outros).
 
 ## Instalar
 
@@ -21,7 +25,7 @@ A barra lateral mostra o endereço que os jogadores devem digitar (ex.: `192.168
 
 - Quando um jogador conecta, ele aparece na lista. Clique nele para escolher o arquivo `.json` da ficha.
 - **Abrir ficha** abre um `.json` só para você ver e editar (sem jogador).
-- **Nova ficha** cria uma ficha em branco a partir do template.
+- **Nova ficha** cria uma ficha em branco (você escolhe o sistema).
 - Tudo o que o mestre ou o jogador edita é salvo na hora no arquivo da ficha, no PC do mestre.
 
 **Jogador**
@@ -33,6 +37,7 @@ Digite o endereço do mestre e o nome do personagem. Se a conexão cair (Wi-Fi, 
 **Criar ficha pela linha de comando**
 ```
 uv run main.py "Gimli"
+uv run main.py "Arthur" --sistema ordem
 ```
 
 Para usar outra porta: `uv run dm.py --port 5001`, e o jogador digita `ip:5001`.
@@ -46,13 +51,15 @@ src/sheet_io.py           ler/salvar/normalizar fichas
 src/net/protocol.py       mensagens JSON + heartbeat
 src/net/server.py         servidor do mestre
 src/net/client.py         cliente do jogador (com reconexão)
+src/ordem.py              perícias, cálculos e normalização de Ordem Paranormal
 src/ui/dnd5e_sheet.py     tela da ficha de D&D 5e
+src/ui/ordem_sheet.py     tela da ficha de Ordem Paranormal
 src/ui/systems.py         escolhe a tela pelo campo "sistema" da ficha
 sheets/                   template e fichas de exemplo
 tests/                    testes (uv run pytest)
 ```
 
-Para adicionar outro sistema de RPG: criar `src/ui/<sistema>_sheet.py` com uma classe `SheetView`, um template em `sheets/`, e registrar em `src/ui/systems.py`.
+Para adicionar outro sistema de RPG: criar `src/ui/<sistema>_sheet.py` com uma classe `SheetView`, um template em `sheets/`, e registrar em `src/ui/systems.py` e `src/sheet_io.SYSTEMS`.
 
 ## Testes
 

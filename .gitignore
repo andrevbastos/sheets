@@ -10,6 +10,9 @@ wheels/
 .venv
 .python/
 
+# Material de referência (PDFs de livros/fichas têm dados de compra e direitos autorais)
+*.pdf
+
 # Preferências locais do jogador
 .player-prefs.json
 
@@ -18,5 +21,7 @@ sheets/*.json
 !sheets/sheet-template.json
 !sheets/sheet-example.json
 !sheets/sheet-example2.json
+!sheets/ordem-template.json
+!sheets/ordem-example.json
 
 .agents

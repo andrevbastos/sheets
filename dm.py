@@ -13,12 +13,10 @@ import customtkinter as ctk
 
 from src.net.protocol import DEFAULT_PORT
 from src.net.server import DNDServer
-from src.sheet_io import create_new_sheet, load_sheet, save_sheet
+from src.sheet_io import SYSTEMS, create_new_sheet, load_sheet, save_sheet
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, PANEL_DARK, TEXT_DIM, TEXT_FAINT,
                            TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, install_click_defocus)
-from src.ui.systems import make_sheet_view
-
-TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sheets", "sheet-template.json")
+from src.ui.systems import life, make_sheet_view
 
 
 @dataclass
@@ -144,17 +142,16 @@ class DMApp:
                           text_color=TEXT_MUTED, command=lambda k=entry.key: self.remove_entry(k)).pack(side=tk.RIGHT)
 
         if entry.sheet:
-            combate = entry.sheet.get("combate", {})
-            hp, hp_max = combate.get("hp_atual", 0), combate.get("hp_max", 0)
+            label, hp, hp_max = life(entry.sheet)
             ratio = hp / max(1, hp_max)
             bar = ctk.CTkProgressBar(card, fg_color=BUTTON, progress_color=OK if ratio > 0.3 else ERROR, height=5)
             bar.pack(fill=tk.X, padx=10, pady=(6, 2))
             bar.set(ratio)
             widgets.append(bar)
             if entry.is_player:
-                status = f"HP: {hp} / {hp_max}" + ("" if entry.online else "  ·  desconectado")
+                status = f"{label}: {hp} / {hp_max}" + ("" if entry.online else "  ·  desconectado")
             else:
-                status = f"HP: {hp} / {hp_max}  ·  ficha local"
+                status = f"{label}: {hp} / {hp_max}  ·  ficha local"
         else:
             status = "Sem ficha (clique para escolher)"
         lbl = ctk.CTkLabel(card, text=status, font=ctk.CTkFont(size=10), text_color=TEXT_DIM if entry.sheet else WARN)
@@ -207,21 +204,52 @@ class DMApp:
             self._add_local(path)
 
     def create_sheet(self):
-        dialog = ctk.CTkInputDialog(title="Nova ficha", text="Nome do personagem:")
-        name = (dialog.get_input() or "").strip()
-        if not name:
+        choice = self._ask_new_sheet()
+        if not choice:
             return
+        name, system = choice
         path = filedialog.asksaveasfilename(title="Salvar ficha nova", defaultextension=".json",
                                             initialdir=self._sheets_dir(), initialfile=f"{name}.json",
                                             filetypes=[("Fichas JSON", "*.json")])
         if not path:
             return
         try:
-            create_new_sheet(name, TEMPLATE_PATH, path)
+            create_new_sheet(name, system, path)
         except OSError as exc:
             messagebox.showerror("Erro", f"Não foi possível criar a ficha:\n{exc}")
             return
         self._add_local(path)
+
+    def _ask_new_sheet(self):
+        """Janela com nome + sistema. Devolve (nome, chave_do_sistema) ou None."""
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Nova ficha")
+        dialog.geometry("360x220")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=BG)
+        dialog.transient(self.root)
+        result = {}
+
+        ctk.CTkLabel(dialog, text="Nome do personagem", text_color=TEXT_DIM).pack(pady=(18, 4))
+        name = ctk.CTkEntry(dialog, width=280, fg_color=PANEL, border_color=BORDER)
+        name.pack()
+        ctk.CTkLabel(dialog, text="Sistema", text_color=TEXT_DIM).pack(pady=(12, 4))
+        labels = {label: key for key, (label, _) in SYSTEMS.items()}
+        system = ctk.CTkSegmentedButton(dialog, values=list(labels))
+        system.set(next(iter(labels)))
+        system.pack()
+
+        def confirm(_event=None):
+            if name.get().strip():
+                result["value"] = (name.get().strip(), labels[system.get()])
+                dialog.destroy()
+
+        ctk.CTkButton(dialog, text="Criar", fg_color=BUTTON, hover_color=BUTTON_HOVER, width=280,
+                      command=confirm).pack(pady=16)
+        name.bind("<Return>", confirm)
+        dialog.after(100, lambda: (dialog.grab_set(), name.focus_set()))
+        self.root.wait_window(dialog)
+        return result.get("value")
 
     def _add_local(self, path):
         sheet = self._load(path)

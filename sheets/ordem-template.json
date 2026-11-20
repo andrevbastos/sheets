@@ -1,0 +1,173 @@
+{
+  "sistema": "ordem",
+  "nome": "{{nome_do_personagem}}",
+  "cor": "#8e44ad",
+  "jogador": "",
+  "origem": "",
+  "classe": "",
+  "deslocamento": "9m",
+  "protecao": "",
+  "resistencias": "",
+  "nex": 5,
+  "pe_rodada": 1,
+  "atributos": {
+    "agi": 1,
+    "for": 1,
+    "int": 1,
+    "pre": 1,
+    "vig": 1
+  },
+  "pv": {
+    "max": 0,
+    "atual": 0
+  },
+  "pe": {
+    "max": 0,
+    "atual": 0
+  },
+  "san": {
+    "max": 0,
+    "atual": 0
+  },
+  "defesa": {
+    "equipamento": 0,
+    "outros": 0
+  },
+  "pericias": {
+    "acrobacia": {
+      "treino": 0,
+      "outros": 0
+    },
+    "adestramento": {
+      "treino": 0,
+      "outros": 0
+    },
+    "artes": {
+      "treino": 0,
+      "outros": 0
+    },
+    "atletismo": {
+      "treino": 0,
+      "outros": 0
+    },
+    "atualidades": {
+      "treino": 0,
+      "outros": 0
+    },
+    "ciencias": {
+      "treino": 0,
+      "outros": 0
+    },
+    "crime": {
+      "treino": 0,
+      "outros": 0
+    },
+    "diplomacia": {
+      "treino": 0,
+      "outros": 0
+    },
+    "enganacao": {
+      "treino": 0,
+      "outros": 0
+    },
+    "fortitude": {
+      "treino": 0,
+      "outros": 0
+    },
+    "furtividade": {
+      "treino": 0,
+      "outros": 0
+    },
+    "iniciativa": {
+      "treino": 0,
+      "outros": 0
+    },
+    "intimidacao": {
+      "treino": 0,
+      "outros": 0
+    },
+    "intuicao": {
+      "treino": 0,
+      "outros": 0
+    },
+    "investigacao": {
+      "treino": 0,
+      "outros": 0
+    },
+    "luta": {
+      "treino": 0,
+      "outros": 0
+    },
+    "medicina": {
+      "treino": 0,
+      "outros": 0
+    },
+    "ocultismo": {
+      "treino": 0,
+      "outros": 0
+    },
+    "percepcao": {
+      "treino": 0,
+      "outros": 0
+    },
+    "pilotagem": {
+      "treino": 0,
+      "outros": 0
+    },
+    "pontaria": {
+      "treino": 0,
+      "outros": 0
+    },
+    "profissao": {
+      "treino": 0,
+      "outros": 0
+    },
+    "reflexos": {
+      "treino": 0,
+      "outros": 0
+    },
+    "religiao": {
+      "treino": 0,
+      "outros": 0
+    },
+    "sobrevivencia": {
+      "treino": 0,
+      "outros": 0
+    },
+    "tatica": {
+      "treino": 0,
+      "outros": 0
+    },
+    "tecnologia": {
+      "treino": 0,
+      "outros": 0
+    },
+    "vontade": {
+      "treino": 0,
+      "outros": 0
+    }
+  },
+  "profissao_nome": "",
+  "ataques": [],
+  "habilidades": [],
+  "dt_rituais": 0,
+  "inventario": {
+    "pontos_prestigio": 0,
+    "patente": "",
+    "limite_itens": {
+      "I": 0,
+      "II": 0,
+      "III": 0,
+      "IV": 0
+    },
+    "limite_credito": "",
+    "carga_max": 0,
+    "itens": []
+  },
+  "descricao": {
+    "aparencia": "",
+    "personalidade": "",
+    "historico": "",
+    "objetivo": ""
+  }
+}
