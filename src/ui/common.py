@@ -60,6 +60,48 @@ class UiDispatcher:
             pass  # janela fechada
 
 
+def allow_ctrl_c(root, on_interrupt):
+    """Faz Ctrl+C no terminal fechar o app.
+
+    No Windows, enquanto o Tk espera eventos o Python não roda, então o Ctrl+C nunca é tratado.
+    Um "tique" a cada 200 ms devolve o controle ao Python; o handler só agenda o fechamento
+    na thread da interface. `on_interrupt` pode ser trocado depois via o atributo devolvido.
+    """
+    import signal
+
+    state = {"handler": on_interrupt}
+
+    def handle(_signum, _frame):
+        root.after(0, lambda: state["handler"]())
+
+    signal.signal(signal.SIGINT, handle)
+
+    def tick():
+        try:
+            root.after(200, tick)
+        except tk.TclError:
+            pass
+
+    root.after(200, tick)
+    return state
+
+
+def bring_to_front(root):
+    """Traz a janela para frente ao abrir (às vezes ela nasce atrás do terminal)."""
+
+    def lift():
+        try:
+            root.deiconify()
+            root.lift()
+            root.attributes("-topmost", True)
+            root.after(300, lambda: root.attributes("-topmost", False))
+            root.focus_force()
+        except tk.TclError:
+            pass
+
+    root.after(150, lift)
+
+
 def fmt_bonus(value) -> str:
     try:
         value = int(value)

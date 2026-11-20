@@ -14,7 +14,7 @@ from src.net.client import DNDClient
 from src.net.protocol import DEFAULT_PORT
 from src.sheet_io import SYSTEMS
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, TEXT, TEXT_DIM, TITLE_FONT, WARN,
-                           UiDispatcher, install_click_defocus)
+                           UiDispatcher, allow_ctrl_c, bring_to_front, install_click_defocus)
 from src.ui.systems import make_sheet_view
 
 PREFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".player-prefs.json")
@@ -53,6 +53,8 @@ class PlayerApp:
         self.root.configure(fg_color=BG)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         install_click_defocus(self.root)
+        allow_ctrl_c(self.root, self.on_close)
+        bring_to_front(self.root)
 
         self.ui = UiDispatcher(self.root)
         self.client: DNDClient | None = None
@@ -189,7 +191,10 @@ class PlayerApp:
     def on_close(self):
         if self.client:
             self.client.close()
-        self.root.destroy()
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
 
     def run(self):
         self.root.mainloop()

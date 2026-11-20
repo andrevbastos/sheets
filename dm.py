@@ -16,7 +16,8 @@ from src.net.protocol import DEFAULT_PORT
 from src.net.server import DNDServer
 from src.sheet_io import SYSTEMS, create_new_sheet, load_sheet, save_sheet
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, PANEL_DARK, TEXT_DIM, TEXT_FAINT,
-                           TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, install_click_defocus)
+                           TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, allow_ctrl_c, bring_to_front,
+                           install_click_defocus)
 from src.ui.systems import life, make_sheet_view
 
 PREFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dm-prefs.json")
@@ -66,6 +67,9 @@ class DMApp:
         self.root.title("Fichas - Mestre")
         self.root.configure(fg_color=BG)
         self.closed = False
+        self.server = None
+        self._ctrl_c = allow_ctrl_c(self.root, self.on_close)
+        bring_to_front(self.root)
 
         self.entries: dict[str, Entry] = {}
         self.selected: str | None = None
@@ -123,7 +127,11 @@ class DMApp:
                           command=lambda k=key: choice.set(k)).pack(pady=6)
 
         self.root.protocol("WM_DELETE_WINDOW", lambda: choice.set("__closed__"))
+        self._ctrl_c["handler"] = lambda: choice.set("__closed__")
+        # O CTk nasce escondido e só aparece no mainloop(); aqui ainda não chegamos nele.
+        self.root.deiconify()
         self.root.wait_variable(choice)
+        self._ctrl_c["handler"] = self.on_close
         frame.destroy()
         self.root.resizable(True, True)
         return None if choice.get() == "__closed__" else choice.get()
@@ -369,8 +377,12 @@ class DMApp:
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "sheets")
 
     def on_close(self):
-        self.server.stop()
-        self.root.destroy()
+        if self.server:
+            self.server.stop()
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
 
     def run(self):
         if not self.closed:
