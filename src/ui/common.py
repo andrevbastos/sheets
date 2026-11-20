@@ -111,13 +111,18 @@ def fmt_bonus(value) -> str:
 
 
 def install_click_defocus(root):
-    """Clicar fora de um campo de texto tira o foco dele (dispara o salvamento por FocusOut)."""
+    """Clicar fora de um campo de texto tira o foco dele (dispara o salvamento por FocusOut).
+
+    Campos de uma linha (Entry) e áreas de texto com várias linhas (Text/CTkTextbox) contam como campo.
+    """
+    editable = ("entry", "text")  # "text" pega tanto o Text do Tk quanto o CTkTextbox
 
     def on_click(event):
         widget = event.widget
         while widget is not None:
             try:
-                if "entry" in widget.__class__.__name__.lower() or "entry" in widget.winfo_class().lower():
+                names = (widget.__class__.__name__.lower(), widget.winfo_class().lower())
+                if any(kind in name for kind in editable for name in names):
                     return
                 parent = widget.winfo_parent()
                 widget = widget._nametowidget(parent) if parent else None
