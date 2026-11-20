@@ -90,7 +90,7 @@ def hidden(r: dict) -> dict:
 def describe(r: dict) -> str:
     """Linha de histórico: 'Sofia: 1d20 (Van 1) + 5 → [20, (9)] = 25 — SUCESSO CRÍTICO'."""
     if r.get("hidden"):
-        return f"{r['who']} fez uma rolagem privada"
+        return f"{r['who']}: ?d? = ?"
     head = r["who"] + (" (privada)" if r.get("private") else "")
     # dados descartados pela vantagem/desvantagem aparecem entre parênteses
     dice = ", ".join(str(v) if i in r["kept"] else f"({v})" for i, v in enumerate(r["rolled"]))

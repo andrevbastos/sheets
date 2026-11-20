@@ -70,7 +70,7 @@ def test_rolagem_privada_escondida():
     assert dice.describe(r) == "Mestre (privada): 1d20 → [12] = 12"
     h = dice.hidden(r)
     assert "total" not in h and "rolled" not in h
-    assert dice.describe(h) == "Mestre fez uma rolagem privada"
+    assert dice.describe(h) == "Mestre: ?d? = ?"
 
 
 def test_pedido_invalido_e_limites():

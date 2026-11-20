@@ -180,11 +180,10 @@ class DiceWindow(ctk.CTkToplevel):
         else:
             line.pack(fill=tk.X, pady=2, padx=2)
         text = dice.describe(r)
-        if not r.get("hidden"):
-            ctk.CTkLabel(line, text=str(r["total"]), width=40, font=ctk.CTkFont(size=16, weight="bold"),
-                         text_color=color).pack(side=tk.LEFT, padx=(6, 4))
-        ctk.CTkLabel(line, text=text, font=ctk.CTkFont(size=11, slant="italic" if r.get("hidden") else "roman",
-                                                       weight="bold" if crit else "normal"),
+        total = "?" if r.get("hidden") else str(r["total"])  # privada do mestre: igual às outras, com "?"
+        ctk.CTkLabel(line, text=total, width=40, font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=color).pack(side=tk.LEFT, padx=(6, 4))
+        ctk.CTkLabel(line, text=text, font=ctk.CTkFont(size=11, weight="bold" if crit else "normal"),
                      text_color=color, wraplength=320, justify=tk.LEFT, anchor="w").pack(side=tk.LEFT, fill=tk.X,
                                                                                        padx=4, pady=4)
         self.lines.insert(0, line)

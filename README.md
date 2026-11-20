@@ -47,7 +47,7 @@ O botão **Dados** (na barra lateral do mestre e na barra de cima do jogador) ab
 
 Num teste de 1d20, um 20 natural aparece em verde como **SUCESSO CRÍTICO** e um 1 natural em vermelho como **FALHA CRÍTICA** (vale o dado que ficou depois da vantagem/desvantagem).
 
-O mestre pode marcar **Privada**: os jogadores só veem "Mestre fez uma rolagem privada", sem o valor.
+O mestre pode marcar **Privada**: os jogadores veem a linha `? Mestre: ?d? = ?`, sem o dado nem o valor; o mestre vê o resultado completo.
 
 **Criar ficha pela linha de comando**
 ```
