@@ -602,7 +602,7 @@ class SheetView(ctk.CTkFrame):
             lambda es: self._append(("ataques",), {k: e.get().strip() for k, e in zip(keys, es)}, es,
                                     self._populate_attacks))
         self._list_rows(scroll, ("ataques",), self.sheet["ataques"], self.ATTACK_COLS, keys,
-                        lambda i: self._remove(("ataques",), i, self._populate_attacks))
+                        lambda i: self._remove(("ataques",), i, self._populate_attacks), wrap_key="especial")
 
     # Habilidades & Rituais
     ABILITY_COLS = [(150, True), (40, False), (40, False), (170, True)]
