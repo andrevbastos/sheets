@@ -15,6 +15,7 @@ from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, INPUT, PANEL
 
 MODE_LABELS = {"Normal": dice.NORMAL, "Vantagem": dice.VANTAGEM, "Desvantagem": dice.DESVANTAGEM}
 DM_COLOR = "#d4af37"
+CRIT_COLORS = {dice.CRIT_SUCCESS: "#2ecc71", dice.CRIT_FAIL: ERROR}
 MAX_LINES = 50
 
 
@@ -70,12 +71,8 @@ class DiceWindow(ctk.CTkToplevel):
         self.extra_hint = ctk.CTkLabel(extra_row, text="", font=ctk.CTkFont(size=9), text_color=TEXT_FAINT)
         self.extra_hint.pack(side=tk.LEFT)
 
-        self.label = ctk.CTkEntry(form, height=28, placeholder_text="Descrição (opcional): ataque, Percepção...",
-                                  fg_color=INPUT, border_color=BORDER)
-        self.label.pack(fill=tk.X, padx=10, pady=(10, 6))
-
         bottom = ctk.CTkFrame(form, fg_color="transparent")
-        bottom.pack(fill=tk.X, padx=10, pady=(4, 12))
+        bottom.pack(fill=tk.X, padx=10, pady=(12, 12))
         self.private = None
         if allow_private:
             self.private = ctk.CTkCheckBox(bottom, text="Privada", font=ctk.CTkFont(size=12), checkbox_width=18,
@@ -88,10 +85,13 @@ class DiceWindow(ctk.CTkToplevel):
         self._update_extra()
 
         # Último resultado em destaque
-        last = ctk.CTkFrame(self, fg_color=PANEL_DARK, corner_radius=10)
-        last.pack(fill=tk.X, padx=14, pady=10)
+        self.last = ctk.CTkFrame(self, fg_color=PANEL_DARK, corner_radius=10, border_width=2, border_color=PANEL_DARK)
+        self.last.pack(fill=tk.X, padx=14, pady=10)
+        last = self.last
         self.lbl_total = ctk.CTkLabel(last, text="–", font=ctk.CTkFont(size=40, weight="bold"), text_color=TEXT)
         self.lbl_total.pack(pady=(8, 0))
+        self.lbl_crit = ctk.CTkLabel(last, text="", font=ctk.CTkFont(size=13, weight="bold"), height=0)
+        self.lbl_crit.pack()
         self.lbl_detail = ctk.CTkLabel(last, text="Nenhuma rolagem ainda", font=ctk.CTkFont(size=11),
                                        text_color=TEXT_DIM, wraplength=380)
         self.lbl_detail.pack(pady=(0, 8))
@@ -128,7 +128,6 @@ class DiceWindow(ctk.CTkToplevel):
             "mode": MODE_LABELS[self.mode.get()],
             "extra": to_int(self.extra.get(), 1),
             "bonus": to_int(self.bonus.get(), 0),
-            "label": self.label.get(),
             "private": bool(self.private and self.private.get()),
         }
 
@@ -146,6 +145,8 @@ class DiceWindow(ctk.CTkToplevel):
 
     def _notice(self, text, color):
         self.lbl_total.configure(text="!", text_color=color)
+        self.lbl_crit.configure(text="")
+        self.last.configure(border_color=PANEL_DARK)
         self.lbl_detail.configure(text=text, text_color=color)
 
     # ================================================================= resultados
@@ -160,13 +161,19 @@ class DiceWindow(ctk.CTkToplevel):
         self._add_line(r)
         mine = r.get("who") == self.me
         if mine and not r.get("hidden"):
-            self.lbl_total.configure(text=str(r["total"]), text_color=TEXT)
+            crit = dice.critical(r)
+            color = CRIT_COLORS.get(crit, TEXT)
+            self.lbl_total.configure(text=str(r["total"]), text_color=color)
+            self.lbl_crit.configure(text=dice.CRIT_TEXT.get(crit, ""), text_color=color)
+            self.last.configure(border_color=color if crit else PANEL_DARK)
             self.lbl_detail.configure(text=dice.describe(r), text_color=TEXT_DIM)
 
     def _add_line(self, r: dict):
         mine = r.get("who") == self.me
-        color = DM_COLOR if r.get("who") == "Mestre" else (TEXT if mine else TEXT_DIM)
-        line = ctk.CTkFrame(self.history, fg_color=PANEL if mine else "transparent", corner_radius=6)
+        crit = dice.critical(r)
+        color = CRIT_COLORS.get(crit) or (DM_COLOR if r.get("who") == "Mestre" else (TEXT if mine else TEXT_DIM))
+        line = ctk.CTkFrame(self.history, fg_color=PANEL if mine else "transparent", corner_radius=6,
+                            border_width=2 if crit else 0, border_color=color)
         top = self.lines[0] if self.lines else None
         if top is not None and top.winfo_exists():
             line.pack(fill=tk.X, pady=2, padx=2, before=top)  # mais recente em cima
@@ -176,7 +183,8 @@ class DiceWindow(ctk.CTkToplevel):
         if not r.get("hidden"):
             ctk.CTkLabel(line, text=str(r["total"]), width=40, font=ctk.CTkFont(size=16, weight="bold"),
                          text_color=color).pack(side=tk.LEFT, padx=(6, 4))
-        ctk.CTkLabel(line, text=text, font=ctk.CTkFont(size=11, slant="italic" if r.get("hidden") else "roman"),
+        ctk.CTkLabel(line, text=text, font=ctk.CTkFont(size=11, slant="italic" if r.get("hidden") else "roman",
+                                                       weight="bold" if crit else "normal"),
                      text_color=color, wraplength=320, justify=tk.LEFT, anchor="w").pack(side=tk.LEFT, fill=tk.X,
                                                                                        padx=4, pady=4)
         self.lines.insert(0, line)

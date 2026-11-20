@@ -43,7 +43,9 @@ Digite o endereço do mestre e o nome do personagem. Se a conexão cair (Wi-Fi, 
 
 **Dados**
 
-O botão **Dados** (na barra lateral do mestre e na barra de cima do jogador) abre uma janela separada de rolagem. Escolha o dado, a quantidade, o bônus e, se for o caso, vantagem ou desvantagem com quantos dados extras (rola a mais e fica com os maiores ou menores). Quem rola é sempre o servidor do mestre, e todo mundo vê o resultado no histórico da mesa, por exemplo `Sofia — Ataque: 1d20 (Van 1) + 5 → [(13), 18] = 23` (o dado entre parênteses foi descartado).
+O botão **Dados** (na barra lateral do mestre e na barra de cima do jogador) abre uma janela separada de rolagem. Escolha o dado, a quantidade, o bônus e, se for o caso, vantagem ou desvantagem com quantos dados extras (rola a mais e fica com os maiores ou menores). Quem rola é sempre o servidor do mestre, e todo mundo vê o resultado no histórico da mesa, por exemplo `Sofia: 1d20 (Van 1) + 5 → [(13), 18] = 23` (o dado entre parênteses foi descartado).
+
+Num teste de 1d20, um 20 natural aparece em verde como **SUCESSO CRÍTICO** e um 1 natural em vermelho como **FALHA CRÍTICA** (vale o dado que ficou depois da vantagem/desvantagem).
 
 O mestre pode marcar **Privada**: os jogadores só veem "Mestre fez uma rolagem privada", sem o valor.
 

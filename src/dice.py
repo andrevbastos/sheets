@@ -16,6 +16,8 @@ MAX_EXTRA = 10
 MAX_BONUS = 999
 
 NORMAL, VANTAGEM, DESVANTAGEM = "normal", "vantagem", "desvantagem"
+CRIT_SUCCESS, CRIT_FAIL = "sucesso", "falha"
+CRIT_TEXT = {CRIT_SUCCESS: "SUCESSO CRÍTICO", CRIT_FAIL: "FALHA CRÍTICA"}
 MODES = (NORMAL, VANTAGEM, DESVANTAGEM)
 
 
@@ -36,7 +38,6 @@ def clean_request(req: dict) -> dict:
         "mode": mode,
         "extra": max(1, min(extra, MAX_EXTRA)) if mode != NORMAL else 0,
         "bonus": max(-MAX_BONUS, min(int(req.get("bonus", 0)), MAX_BONUS)),
-        "label": str(req.get("label", "")).strip()[:60],
         "private": bool(req.get("private", False)),
     }
 
@@ -53,7 +54,20 @@ def roll(req: dict, who: str, rng=None) -> dict:
         kept_idx = list(range(len(rolled)))
     kept = sorted(kept_idx)
     total = sum(rolled[i] for i in kept) + req["bonus"]
-    return {**req, "who": who, "rolled": rolled, "kept": kept, "total": total, "time": time.time()}
+    result = {**req, "who": who, "rolled": rolled, "kept": kept, "total": total, "time": time.time()}
+    result["critical"] = critical(result)
+    return result
+
+
+def critical(r: dict):
+    """'sucesso' (20 natural) ou 'falha' (1 natural) num teste de 1d20; None nos outros casos.
+
+    Vale o dado que ficou depois da vantagem/desvantagem. Com vários d20 somados não há crítico.
+    """
+    if r.get("hidden") or r.get("sides") != 20 or r.get("qty") != 1 or not r.get("kept"):
+        return None
+    natural = r["rolled"][r["kept"][0]]
+    return CRIT_SUCCESS if natural == 20 else CRIT_FAIL if natural == 1 else None
 
 
 def expression(r: dict) -> str:
@@ -70,16 +84,16 @@ def expression(r: dict) -> str:
 
 def hidden(r: dict) -> dict:
     """Versão de uma rolagem privada para quem não é o mestre: só diz que houve uma rolagem."""
-    return {"who": r["who"], "private": True, "hidden": True, "label": "", "time": r["time"]}
+    return {"who": r["who"], "private": True, "hidden": True, "time": r["time"]}
 
 
 def describe(r: dict) -> str:
-    """Linha de histórico: 'Sofia — Ataque: 1d20 (Van 1) + 5 → [12, (9)] = 17'."""
+    """Linha de histórico: 'Sofia: 1d20 (Van 1) + 5 → [20, (9)] = 25 — SUCESSO CRÍTICO'."""
     if r.get("hidden"):
         return f"{r['who']} fez uma rolagem privada"
-    head = r["who"] + (f" — {r['label']}" if r.get("label") else "")
-    if r.get("private"):
-        head += " (privada)"
+    head = r["who"] + (" (privada)" if r.get("private") else "")
     # dados descartados pela vantagem/desvantagem aparecem entre parênteses
     dice = ", ".join(str(v) if i in r["kept"] else f"({v})" for i, v in enumerate(r["rolled"]))
-    return f"{head}: {expression(r)} → [{dice}] = {r['total']}"
+    text = f"{head}: {expression(r)} → [{dice}] = {r['total']}"
+    crit = critical(r)
+    return f"{text} — {CRIT_TEXT[crit]}" if crit else text
