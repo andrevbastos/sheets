@@ -102,6 +102,73 @@ def bring_to_front(root):
     root.after(150, lift)
 
 
+_ICONS = {}
+
+
+def dice_icon(size=16, dim=False):
+    """Ícone de d20 (hexágono com as faces), desenhado aqui para não depender da fonte do sistema."""
+    key = (size, dim)
+    if key not in _ICONS:
+        import math
+
+        from PIL import Image, ImageDraw
+
+        scale = 8  # desenha grande e reduz: linhas suaves
+        big = size * scale
+        img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        c, r = big / 2, big * 0.47
+        color = (90, 90, 90, 255) if dim else (225, 225, 225, 255)
+        width = max(1, round(big * 0.075))
+
+        def point(angle, radius):
+            a = math.radians(angle)
+            return c + radius * math.cos(a), c + radius * math.sin(a)
+
+        outer = {a: point(a, r) for a in (-90, -30, 30, 90, 150, 210)}
+        inner = {a: point(a, r * 0.52) for a in (-90, 30, 150)}  # face da frente, apontando para cima
+        draw.polygon([inner[a] for a in (-90, 30, 150)], fill=color[:3] + (70,))
+        lines = [(inner[a], outer[a]) for a in inner]  # cada canto da face até o canto de fora
+        lines += [(outer[o], inner[i]) for o, pair in ((-30, (-90, 30)), (90, (30, 150)), (210, (150, -90)))
+                  for i in pair]
+        for p1, p2 in lines:
+            draw.line([p1, p2], fill=color, width=width)
+        draw.line([inner[a] for a in (-90, 30, 150, -90)], fill=color, width=width, joint="curve")
+        draw.line([outer[a] for a in (-90, -30, 30, 90, 150, 210, -90)], fill=color, width=width, joint="curve")
+        img = img.resize((size * 2, size * 2), Image.LANCZOS)  # 2x para telas com escala
+        _ICONS[key] = ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+    return _ICONS[key]
+
+
+_MISSING = object()
+
+
+def update(widget, **kwargs):
+    """configure() só com o que mudou.
+
+    No CustomTkinter cada configure() redesenha o widget inteiro, mesmo com o mesmo valor; refazer
+    dezenas de rótulos a cada edição é o que fazia a tela piscar. Levanta TclError se o widget já
+    foi destruído (quem chama usa isso para esquecer o widget).
+    """
+    if not widget.winfo_exists():
+        raise tk.TclError("widget destruído")
+    last = widget.__dict__.setdefault("_last_cfg", {})
+    changed = {k: v for k, v in kwargs.items() if last.get(k, _MISSING) != v}
+    if changed:
+        widget.configure(**changed)
+        last.update(changed)
+
+
+def update_bar(bar, value):
+    """CTkProgressBar.set() só quando o valor muda (pelo mesmo motivo de update())."""
+    if not bar.winfo_exists():
+        raise tk.TclError("widget destruído")
+    value = round(max(0.0, min(float(value), 1.0)), 4)
+    if bar.__dict__.get("_last_value") != value:
+        bar.set(value)
+        bar._last_value = value
+
+
 def fmt_bonus(value) -> str:
     try:
         value = int(value)

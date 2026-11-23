@@ -112,6 +112,17 @@ ORIGENS = {
 ORIGEM_NOMES = [o[0] for o in ORIGENS.values()]
 CREDITOS = ["Baixo", "Médio", "Alto", "Ilimitado"]
 
+# Rituais (p. 119): elementos e custo em PE pelo círculo (Tabela 5.2)
+ELEMENTOS = ["Conhecimento", "Energia", "Morte", "Sangue", "Medo"]
+CUSTO_CIRCULO = {1: 1, 2: 3, 3: 6, 4: 10}
+
+# Ameaças (p. 178-179): tamanho, testes que a ficha do livro mostra em destaque e tipos de ação
+TIPO_AMEACA = "ameaca"
+TAMANHOS = ["Minúsculo", "Pequeno", "Médio", "Grande", "Enorme", "Colossal"]
+AMEACA_TESTES = [("percepcao", "Percepção", "pre"), ("iniciativa", "Iniciativa", "agi"),
+                 ("fortitude", "Fortitude", "vig"), ("reflexos", "Reflexos", "agi"), ("vontade", "Vontade", "pre")]
+TIPOS_ACAO = ["Padrão", "Movimento", "Completa", "Reação", "Livre"]
+
 # Níveis de exposição válidos (Tabela 1.2, p. 33)
 NEX_LEVELS = list(range(5, 100, 5)) + [99]
 
@@ -278,6 +289,186 @@ def dados(sheet, attr) -> str:
     return f"{valor}d20" if valor > 0 else "2d20↓"
 
 
+# ------------------------------------------------------------------ rolagens
+_TESTE_RE = re.compile(r"(?<![\wÀ-ÿ])(\d*)d20(↓)?(?![\wÀ-ÿ])\s*(?:([+\-−])\s*(\d+))?", re.I)
+# Notação do livro (2O+10, O+5, O = d20). O app escreve 3d20+10; esta só serve para converter fichas antigas.
+# Só casa com número antes do O ("2O") ou bônus depois ("O+5"), para não pegar o artigo "O" num texto.
+_LIVRO_RE = re.compile(r"(?<![\wÀ-ÿ])(?:(\d+)O(?![\wÀ-ÿ])|O(?=\s*[+\-−]\s*\d))")
+_BONUS_RE = re.compile(r"([+\-−])\s*(\d+)")
+_PERICIA_POR_NOME = {_plain(nome): key for key, nome, *_ in PERICIAS}
+
+
+def teste_request(n_dados: int, bonus: int, label="") -> dict:
+    """Pedido de um teste (p. 24): n d20 e fica com o maior; com 0 dados, rola 2d20 e fica com o pior."""
+    n_dados = max(0, min(n_dados, 11))
+    if n_dados == 0:
+        mode, extra = "desvantagem", 1
+    elif n_dados == 1:
+        mode, extra = "normal", 0
+    else:
+        mode, extra = "vantagem", n_dados - 1
+    return {"sides": 20, "qty": 1, "mode": mode, "extra": extra, "bonus": bonus, "label": label}
+
+
+def _fmt_dados(n_dados: int) -> str:
+    return "2d20↓" if n_dados == 0 else f"{n_dados}d20"  # atributo 0: 2d20 e fica com o pior
+
+
+def fmt_teste(n_dados: int, bonus: int) -> str:
+    """'3d20+10', '1d20+5', '2d20↓' (atributo 0)."""
+    return _fmt_dados(n_dados) + (f"+{bonus}" if bonus > 0 else f"-{-bonus}" if bonus < 0 else "")
+
+
+def d20_notation(text) -> str:
+    """Troca a notação do livro pelo dado inteiro: '2O+10' -> '2d20+10', 'O+5' -> '1d20+5', 'O' sozinho -> '1d20'."""
+    text = str(text or "")
+    if text.strip() == "O":
+        return "1d20"
+    return _LIVRO_RE.sub(lambda m: _fmt_dados(int(m.group(1) or 1)), text)
+
+
+def _sinal(simbolo, numero) -> int:
+    return int(numero) * (-1 if simbolo in ("-", "−") else 1)
+
+
+def parse_teste(text):
+    """'3d20+15', 'Luta 2d20+5', '2d20↓' -> (dados, bônus), ou None se o texto não traz os dados."""
+    match = _TESTE_RE.search(d20_notation(text))
+    if not match:
+        return None
+    n_dados = 0 if match.group(2) else int(match.group(1)) if match.group(1) else 1
+    return n_dados, _sinal(match.group(3), match.group(4)) if match.group(4) else 0
+
+
+def _pericia_no_texto(text):
+    plain = _plain(text)
+    for nome, key in _PERICIA_POR_NOME.items():
+        if re.search(rf"(?<![a-z]){re.escape(nome)}(?![a-z])", plain):
+            return key
+    return None
+
+
+def _pericia(key):
+    return next(p for p in PERICIAS if p[0] == key)
+
+
+def pericia_request(sheet, key, label=None) -> dict:
+    """Teste de perícia do agente: dados do atributo + bônus (já com a penalidade de sobrecarga)."""
+    _, nome, attr, *_ = _pericia(key)
+    return teste_request(sheet["atributos"].get(attr, 0), bonus_pericia(sheet, key), label or nome)
+
+
+def ataque_request(sheet, text, label=""):
+    """Teste de ataque escrito à mão: '3d20+10', 'Luta', 'Luta +2' ou '+5'. None se não der para entender."""
+    text = str(text or "")
+    parsed = parse_teste(text)
+    if parsed:
+        return teste_request(*parsed, label)
+    key = _pericia_no_texto(text)
+    if is_ameaca(sheet):
+        return ameaca_pericia_request(sheet, key, label) if key else None
+    extra = sum(_sinal(m.group(1), m.group(2)) for m in _BONUS_RE.finditer(text))
+    if key:
+        req = pericia_request(sheet, key, label)
+        req["bonus"] += extra
+        return req
+    if re.fullmatch(r"\s*[+\-−]\s*\d+\s*", text):
+        return teste_request(1, extra, label)
+    return None
+
+
+def dano_request(text, label=""):
+    """Rolagem de dano ('2d6+4 corte'). None se o texto não tem dados."""
+    from src import dice  # tardio: evita importar a rolagem só para normalizar fichas
+    req = dice.parse_dice(text)
+    return {**req, "label": label} if req else None
+
+
+def iniciativa_request(sheet, label=None) -> dict:
+    label = label or f"{sheet.get('nome', '')} · Iniciativa"
+    if is_ameaca(sheet):
+        return ameaca_pericia_request(sheet, "iniciativa", label)
+    return pericia_request(sheet, "iniciativa", label)
+
+
+def custo_ritual(ritual) -> int:
+    """PE do ritual pelo círculo (Tabela 5.2, p. 119), sem as formas discente/verdadeira."""
+    return CUSTO_CIRCULO.get(ritual.get("circulo", 1), 1)
+
+
+# ------------------------------------------------------------------ ameaças
+def is_ameaca(sheet) -> bool:
+    return isinstance(sheet, dict) and sheet.get("tipo") == TIPO_AMEACA
+
+
+def machucado(sheet) -> int:
+    """Limiar de 'machucado' das ameaças: metade dos PV (p. 178)."""
+    return sheet["pv"]["max"] // 2
+
+
+def pericias_ameaca(sheet):
+    """Perícias extras escritas na ficha da ameaça ('Furtividade 2d20+13, Luta 3d20+10') -> [(nome, dados, bônus)]."""
+    out = []
+    for parte in re.split(r"[,;\n]", sheet.get("pericias", "")):
+        parsed = parse_teste(parte)
+        nome = _TESTE_RE.sub("", parte).strip(" .:")
+        if parsed and nome:
+            out.append((nome, *parsed))
+    return out
+
+
+def ameaca_pericia_request(sheet, key, label=None) -> dict:
+    """Teste da ameaça: um dos cinco testes da ficha, uma perícia escrita ou, sem nada, só o atributo."""
+    _, nome, attr, *_ = _pericia(key)
+    label = label or nome
+    parsed = parse_teste(sheet.get("testes", {}).get(key, ""))
+    if parsed:
+        return teste_request(*parsed, label)
+    for outro, n_dados, bonus in pericias_ameaca(sheet):
+        if _pericia_no_texto(outro) == key:
+            return teste_request(n_dados, bonus, label)
+    return teste_request(sheet["atributos"].get(attr, 0), 0, label)
+
+
+def normalize_ameaca(sheet: dict, to_int, clean_list) -> dict:
+    """Ficha de ameaça (p. 178-179), só do mestre. Os números já vêm prontos, como no livro."""
+    s = copy.deepcopy(sheet)
+    s["sistema"], s["tipo"] = SYSTEM, TIPO_AMEACA
+    s["nome"] = str(s.get("nome") or "Sem Nome")
+    cor = str(s.get("cor") or "").strip()
+    s["cor"] = cor if cor.startswith("#") and len(cor) in (4, 7) else "#7a1f1f"
+    for key in ("vd", "descritores", "deslocamento"):
+        s[key] = str(s.get(key) or "")
+    n = d20_notation  # fichas antigas com a notação do livro (2O+10) passam a mostrar 2d20+10
+    for key in ("sentidos", "resistencias", "vulnerabilidades", "pericias"):
+        s[key] = n(s.get(key))
+    if not s["deslocamento"]:
+        s["deslocamento"] = "9m"
+    s["tamanho"] = next((t for t in TAMANHOS if _plain(t) == _plain(s.get("tamanho"))), "Médio")
+    pres = s.get("presenca") if isinstance(s.get("presenca"), dict) else {}
+    s["presenca"] = {"dt": max(0, to_int(pres.get("dt"), 0)), "dano": str(pres.get("dano") or ""),
+                     "imune": str(pres.get("imune") or "")}
+    attrs = s.get("atributos") if isinstance(s.get("atributos"), dict) else {}
+    s["atributos"] = {key: max(0, to_int(attrs.get(key), 1)) for key, _, _ in ATRIBUTOS}
+    testes = s.get("testes") if isinstance(s.get("testes"), dict) else {}
+    s["testes"] = {key: n(testes.get(key)) or fmt_teste(s["atributos"][attr], 0) for key, _, attr in AMEACA_TESTES}
+    s["defesa"] = to_int(s.get("defesa"), 10)
+    pv = s.get("pv") if isinstance(s.get("pv"), dict) else {}
+    maximo = max(0, to_int(pv.get("max"), 0))
+    s["pv"] = {"max": maximo, "atual": max(0, to_int(pv.get("atual"), maximo))}
+    s["habilidades"] = [{"nome": str(h.get("nome") or ""), "descricao": n(h.get("descricao"))}
+                        for h in clean_list(s.get("habilidades")) if isinstance(h, dict)]
+    s["acoes"] = [
+        {"tipo": a.get("tipo") if a.get("tipo") in TIPOS_ACAO else "Padrão",
+         "nome": str(a.get("nome") or ""), "teste": n(a.get("teste")), "dano": str(a.get("dano") or ""),
+         "descricao": n(a.get("descricao"))}
+        for a in clean_list(s.get("acoes")) if isinstance(a, dict)
+    ]
+    desc = s.get("descricao") if isinstance(s.get("descricao"), dict) else {}
+    s["descricao"] = {key: n(desc.get(key)) for key, _ in DESCRICAO}
+    return apply_rules(s)
+
+
 def _aplicar_pericias_da_origem(sheet):
     """As duas perícias da origem ficam no mínimo Treinado (p. 26).
 
@@ -299,6 +490,9 @@ def _aplicar_pericias_da_origem(sheet):
 
 def apply_rules(sheet: dict) -> dict:
     """Grava na ficha (no lugar) tudo o que as regras definem. Devolve a própria ficha."""
+    if is_ameaca(sheet):
+        sheet["pv"]["atual"] = max(0, min(sheet["pv"]["atual"], sheet["pv"]["max"]))
+        return sheet
     sheet["nex"] = nex_valido(sheet.get("nex", 5))
     sheet["pe_rodada"] = pe_por_rodada(sheet)
     sheet["dt_rituais"] = dt_rituais(sheet)
@@ -323,6 +517,8 @@ def apply_rules(sheet: dict) -> dict:
 
 
 def normalize(sheet: dict, to_int, clean_list) -> dict:
+    if is_ameaca(sheet):
+        return normalize_ameaca(sheet, to_int, clean_list)
     s = copy.deepcopy(sheet)
     s["sistema"] = SYSTEM
     s["nome"] = str(s.get("nome") or "Sem Nome")
@@ -360,7 +556,7 @@ def normalize(sheet: dict, to_int, clean_list) -> dict:
     s["origem_pericias"] = [k for k in anteriores if k in s["pericias"]]
 
     s["ataques"] = [
-        {k: str(a.get(k) or "") for k in ("nome", "teste", "dano", "especial")}
+        {**{k: str(a.get(k) or "") for k in ("nome", "dano", "especial")}, "teste": d20_notation(a.get("teste"))}
         for a in clean_list(s.get("ataques")) if isinstance(a, dict)
     ]
     s["habilidades"] = [
@@ -370,6 +566,16 @@ def normalize(sheet: dict, to_int, clean_list) -> dict:
          "pagina": re.sub(r"^\s*p[áa]g\.?\s*", "", str(h.get("pagina") or ""), flags=re.I),
          "descricao": str(h.get("descricao") or "")}
         for h in clean_list(s.get("habilidades")) if isinstance(h, dict)
+    ]
+
+    s["rituais"] = [
+        {"nome": str(r.get("nome") or ""),
+         "elemento": next((e for e in ELEMENTOS if _plain(e) == _plain(r.get("elemento"))), ""),
+         "circulo": max(1, min(to_int(r.get("circulo"), 1), 4)),
+         **{k: str(r.get(k) or "") for k in ("execucao", "alcance", "alvo", "duracao", "resistencia", "dano")},
+         "pagina": re.sub(r"^\s*p[áa]g\.?\s*", "", str(r.get("pagina") or ""), flags=re.I),
+         "descricao": str(r.get("descricao") or "")}
+        for r in clean_list(s.get("rituais")) if isinstance(r, dict)
     ]
 
     inv = s.get("inventario") if isinstance(s.get("inventario"), dict) else {}

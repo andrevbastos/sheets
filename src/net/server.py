@@ -88,6 +88,8 @@ class DNDServer:
         sheet = normalize_sheet(sheet)
         if self.system and sheet.get("sistema") != self.system:
             raise ValueError(f"Ficha de {sheet.get('sistema')!r} numa sessão de {self.system!r}")
+        if sheet.get("tipo"):
+            raise ValueError("Fichas de ameaça são só do mestre e não vão para jogadores.")
         with self.lock:
             self.assignments[name] = Assignment(filepath=filepath, sheet=copy.deepcopy(sheet))
             conn = self.sessions.get(name)
@@ -205,8 +207,9 @@ class DNDServer:
             assignment = self.assignments.get(name)
             if not assignment:
                 return  # ainda sem ficha vinculada: ignora
-            if sheet.get("sistema") != assignment.sheet.get("sistema"):
-                return  # o jogador não pode trocar o sistema da ficha
+            if (sheet.get("sistema"), sheet.get("tipo")) != (assignment.sheet.get("sistema"),
+                                                             assignment.sheet.get("tipo")):
+                return  # o jogador não pode trocar o sistema nem o tipo da ficha
             assignment.sheet = copy.deepcopy(sheet)
         self._save(name, assignment, sheet)
         self._emit(self.on_update, name, sheet)

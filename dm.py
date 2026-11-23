@@ -12,14 +12,16 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
+from src import ordem
 from src.net.protocol import DEFAULT_PORT
 from src.net.server import DM_NAME, DNDServer
 from src.ui.dice_window import DiceWindow
-from src.sheet_io import SYSTEMS, create_new_sheet, load_sheet, save_sheet
+from src.ui.initiative_window import InitiativeWindow
+from src.sheet_io import SYSTEMS, create_new_sheet, create_new_threat, load_sheet, save_sheet
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, PANEL_DARK, TEXT_DIM, TEXT_FAINT,
                            TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, allow_ctrl_c, bring_to_front,
-                           install_click_defocus)
-from src.ui.systems import make_sheet_view, resources
+                           install_click_defocus, update, update_bar)
+from src.ui.systems import iniciativa_request, make_sheet_view, resources
 
 PREFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dm-prefs.json")
 
@@ -97,6 +99,11 @@ class DMApp:
         self.server.on_roll = ui.wrap(self.on_roll)
         self.rolls = []
         self.dice_window = None
+        self.initiative = None
+        self.views = {}              # tela já montada de cada ficha (trocar de ficha não remonta)
+        self._sidebar_layout = None  # forma dos cartões da barra lateral na última vez
+        self._card_values = {}       # rótulo e barra de cada recurso, para atualizar no lugar
+        self._cards = {}             # cartão de cada ficha na barra lateral
 
         self._build_ui()
         install_click_defocus(self.root)
@@ -153,11 +160,18 @@ class DMApp:
 
         buttons = ctk.CTkFrame(sidebar, fg_color="transparent")
         buttons.pack(fill=tk.X, padx=10)
-        for text, command in (("Abrir ficha", self.open_local_sheet), ("Nova ficha", self.create_sheet)):
-            ctk.CTkButton(buttons, text=text, fg_color=BUTTON, hover_color=BUTTON_HOVER, height=28,
+        sheet_buttons = [("Abrir ficha", self.open_local_sheet), ("Nova ficha", self.create_sheet)]
+        if self.system == ordem.SYSTEM:
+            sheet_buttons.append(("Nova ameaça", self.create_threat))
+        for text, command in sheet_buttons:
+            ctk.CTkButton(buttons, text=text, fg_color=BUTTON, hover_color=BUTTON_HOVER, height=28, width=10,
                           command=command).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=3)
-        ctk.CTkButton(sidebar, text="Dados", fg_color=BUTTON, hover_color=BUTTON_HOVER, height=30,
-                      font=ctk.CTkFont(size=13, weight="bold"), command=self.open_dice).pack(fill=tk.X, padx=13, pady=(8, 0))
+        table = ctk.CTkFrame(sidebar, fg_color="transparent")
+        table.pack(fill=tk.X, padx=10, pady=(8, 0))
+        for text, command in (("Dados", self.open_dice), ("Iniciativa", self.open_initiative)):
+            ctk.CTkButton(table, text=text, fg_color=BUTTON, hover_color=BUTTON_HOVER, height=30, width=10,
+                          font=ctk.CTkFont(size=13, weight="bold"), command=command).pack(
+                side=tk.LEFT, fill=tk.X, expand=True, padx=3)
 
         self.list_frame = ctk.CTkScrollableFrame(sidebar, fg_color="transparent")
         self.list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=10)
@@ -168,28 +182,71 @@ class DMApp:
 
         self.detail = ctk.CTkFrame(self.root, fg_color="transparent")
         self.detail.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.placeholder = ctk.CTkLabel(self.detail, text="Selecione uma ficha na lista ao lado",
+                                        font=ctk.CTkFont(size=16, weight="bold"), text_color=TEXT_FAINT)
 
         self.refresh_sidebar()
         self.show_selected()
 
     def refresh_sidebar(self):
+        if self.initiative is not None and self.initiative.winfo_exists():
+            self.initiative.refresh()
+        ordered = self._ordered_entries()
+        layout = [self._card_layout(e) for e in ordered]
+        if layout and layout == self._sidebar_layout:
+            # mesmas fichas, mesma ordem: só os números e as barras mudam (sem refazer e piscar)
+            for entry in ordered:
+                self._update_card_values(entry)
+                update(self._cards[entry.key], **self._card_style(entry))
+            return
+        self._sidebar_layout = layout
+        self._card_values = {}
+        self._cards = {}
         for child in self.list_frame.winfo_children():
             child.destroy()
         if not self.entries:
             ctk.CTkLabel(self.list_frame, text="Nenhum jogador conectado.\nAbra uma ficha ou espere os jogadores.",
                          font=ctk.CTkFont(size=11, slant="italic"), text_color=TEXT_FAINT).pack(pady=20)
             return
-        players = sorted((e for e in self.entries.values() if e.is_player), key=lambda e: e.label.lower())
-        local = sorted((e for e in self.entries.values() if not e.is_player), key=lambda e: e.label.lower())
-        for entry in players + local:
+        for entry in self._ordered_entries():
             self._sidebar_card(entry)
 
-    def _sidebar_card(self, entry: Entry):
+    def _ordered_entries(self):
+        """Jogadores, depois fichas locais de agentes, depois ameaças."""
+        return sorted(self.entries.values(),
+                      key=lambda e: (not e.is_player, ordem.is_ameaca(e.sheet), e.label.lower()))
+
+    def _card_layout(self, entry: Entry):
+        """O que muda a forma do cartão (se isso não mudou, só os valores são atualizados)."""
+        sheet = entry.sheet
+        return (entry.key, entry.label, entry.is_player, entry.online,
+                sheet.get("cor") if sheet else None, ordem.is_ameaca(sheet),
+                tuple(r[0] for r in resources(sheet)) if sheet else ())
+
+    def _update_card_values(self, entry: Entry):
+        if not entry.sheet:
+            return
+        for (lbl_val, bar, fixed_color), (_sigla, atual, maximo, _c) in zip(self._card_values.get(entry.key, []),
+                                                                           resources(entry.sheet)):
+            ratio = atual / max(1, maximo)
+            update(lbl_val, text=f"{atual}/{maximo}")
+            update_bar(bar, ratio)
+            if not fixed_color:
+                update(bar, progress_color=OK if ratio > 0.3 else ERROR)
+
+    def _card_style(self, entry: Entry):
+        """Destaque da ficha selecionada (muda no lugar, sem refazer o cartão)."""
         selected = entry.key == self.selected
         color = entry.sheet.get("cor", "#ffffff") if entry.sheet else "#888888"
-        card = ctk.CTkFrame(self.list_frame, fg_color="#222222" if selected else PANEL_DARK, corner_radius=8,
-                            border_width=2 if selected else 1, border_color=color if selected and entry.sheet else BORDER)
+        return {"fg_color": "#222222" if selected else PANEL_DARK, "border_width": 2 if selected else 1,
+                "border_color": color if selected and entry.sheet else BORDER}
+
+    def _sidebar_card(self, entry: Entry):
+        color = entry.sheet.get("cor", "#ffffff") if entry.sheet else "#888888"
+        card = ctk.CTkFrame(self.list_frame, corner_radius=8)
+        update(card, **self._card_style(entry))
         card.pack(fill=tk.X, pady=5)
+        self._cards[entry.key] = card
         widgets = [card]
 
         top = ctk.CTkFrame(card, fg_color="transparent")
@@ -221,9 +278,11 @@ class DMApp:
                 bar = ctk.CTkProgressBar(row, fg_color=BUTTON, height=6,
                                          progress_color=res_color or (OK if ratio > 0.3 else ERROR))
                 bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
-                bar.set(ratio)
+                update_bar(bar, ratio)
                 widgets += [row, lbl_sigla, lbl_val, bar]
-            status = "" if entry.online else ("desconectado" if entry.is_player else "ficha local")
+                self._card_values.setdefault(entry.key, []).append((lbl_val, bar, res_color))
+            status = "" if entry.online else ("desconectado" if entry.is_player else
+                                              "ameaça" if ordem.is_ameaca(entry.sheet) else "ficha local")
         else:
             status = "Sem ficha (clique para escolher)"
         if status:
@@ -237,16 +296,33 @@ class DMApp:
             widget.bind("<Button-1>", lambda e, k=entry.key: self.select(k))
 
     def show_selected(self):
-        for child in self.detail.winfo_children():
-            child.destroy()
-        self.view = None
+        """Mostra a ficha selecionada. Cada ficha monta a tela uma vez só e fica guardada: trocar de
+        ficha é só esconder uma e mostrar a outra (montar de novo é lento e pisca)."""
         entry = self.entries.get(self.selected)
-        if not entry or not entry.sheet:
-            ctk.CTkLabel(self.detail, text="Selecione uma ficha na lista ao lado", font=ctk.CTkFont(size=16, weight="bold"),
-                         text_color=TEXT_FAINT).pack(expand=True)
-            return
-        self.view = make_sheet_view(self.detail, entry.sheet, on_change=lambda s, k=entry.key: self.on_dm_edit(k, s))
-        self.view.pack(fill=tk.BOTH, expand=True)
+        view = self.views.get(self.selected) if entry and entry.sheet else None
+        if entry and entry.sheet and view is None:
+            view = make_sheet_view(self.detail, entry.sheet, on_change=lambda s, k=entry.key: self.on_dm_edit(k, s),
+                                   on_roll=lambda req, k=entry.key: self.roll_from_sheet(k, req))
+            self.views[entry.key] = view
+        elif view is not None:
+            view.set_sheet(entry.sheet)  # pode ter mudado enquanto estava escondida
+        if view is not None:
+            view.pack(fill=tk.BOTH, expand=True)  # mostra a nova antes de esconder a antiga
+        for other in self.views.values():
+            if other is not view:
+                other.pack_forget()
+        if view is None:
+            self.placeholder.pack(expand=True)
+        else:
+            self.placeholder.pack_forget()
+        self.view = view
+
+    def _drop_view(self, key):
+        view = self.views.pop(key, None)
+        if view is not None:
+            view.destroy()
+        if self.view is view:
+            self.view = None
 
     # ================================================================= ações do mestre
     def select(self, key):
@@ -268,7 +344,12 @@ class DMApp:
         sheet = self._load(path)
         if sheet is None:
             return False
+        if ordem.is_ameaca(sheet):
+            messagebox.showerror("Ficha de ameaça", f"{os.path.basename(path)} é uma ficha de ameaça. "
+                                                    "Ameaças são só do mestre: abra com Abrir ficha.")
+            return False
         entry.filepath, entry.sheet = path, sheet
+        self._drop_view(entry.key)
         self.server.assign_sheet(entry.label, path, sheet)
         return True
 
@@ -310,6 +391,24 @@ class DMApp:
             return
         self._add_local(path)
 
+    def create_threat(self):
+        dialog = ctk.CTkInputDialog(title="Nova ameaça", text="Nome da ameaça:")
+        name = (dialog.get_input() or "").strip()
+        if not name:
+            return
+        npcs = os.path.join(self._sheets_dir(), "npcs")
+        path = filedialog.asksaveasfilename(title="Salvar ameaça nova", defaultextension=".json",
+                                            initialdir=npcs if os.path.isdir(npcs) else self._sheets_dir(),
+                                            initialfile=f"{name}.json", filetypes=[("Fichas JSON", "*.json")])
+        if not path:
+            return
+        try:
+            create_new_threat(name, path)
+        except OSError as exc:
+            messagebox.showerror("Erro", f"Não foi possível criar a ameaça:\n{exc}")
+            return
+        self._add_local(path)
+
     def _add_local(self, path):
         sheet = self._load(path)
         if sheet is None:
@@ -321,12 +420,14 @@ class DMApp:
     def _register_local(self, path, sheet) -> str:
         """Coloca a ficha na lista (sem redesenhar). Abrir o mesmo arquivo de novo só atualiza."""
         key = "local:" + os.path.normcase(os.path.abspath(path))
+        self._drop_view(key)  # abriu de novo: monta com o que está no arquivo
         self.entries[key] = Entry(key=key, label=sheet.get("nome", os.path.basename(path)), is_player=False,
                                   filepath=path, sheet=sheet)
         return key
 
     def remove_entry(self, key):
         entry = self.entries.pop(key, None)
+        self._drop_view(key)
         if entry and entry.is_player:
             self.server.forget(entry.label)
         if self.selected == key:
@@ -356,6 +457,31 @@ class DMApp:
                 on_roll=lambda req: bool(self.server.roll_as_dm(req, private=req.get("private", False))))
             self.dice_window.set_history(self.rolls)
         self.dice_window.show()
+
+    def roll_from_sheet(self, key, req):
+        """Botão de rolar numa ficha: abre a janela de dados (se precisar) e rola com o nome da ficha."""
+        entry = self.entries.get(key)
+        name = entry.sheet.get("nome", entry.label) if entry and entry.sheet else ""
+        self.open_dice()
+        self.dice_window.roll_request({**req, "label": f"{name} · {req.get('label', '')}".strip(" ·")})
+
+    # ================================================================= iniciativa
+    def open_initiative(self):
+        if self.initiative is None or not self.initiative.winfo_exists():
+            self.initiative = InitiativeWindow(
+                self.root, get_entries=self._initiative_entries, roll=self._initiative_roll,
+                request_for=iniciativa_request, on_select=self.select, resources=resources)
+        self.initiative.show()
+
+    def _initiative_entries(self):
+        return [(e.key, e.sheet.get("nome", e.label), e.sheet, ordem.is_ameaca(e.sheet))
+                for e in self._ordered_entries() if e.sheet]
+
+    def _initiative_roll(self, req, private):
+        try:
+            return self.server.roll_as_dm(req, private=private)
+        except (TypeError, ValueError):
+            return None
 
     def on_roll(self, result):
         self.rolls = (self.rolls + [result])[-50:]

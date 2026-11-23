@@ -136,14 +136,32 @@ class DiceWindow(ctk.CTkToplevel):
             "private": bool(self.private and self.private.get()),
         }
 
-    def roll(self):
+    def roll(self, req=None):
         try:
-            req = dice.clean_request(self.request())
+            req = dice.clean_request(req or self.request())
         except ValueError as exc:
             self._notice(str(exc), ERROR)
             return
         if not self.on_roll(req):
             self._notice("Sem conexão com o mestre. Tente de novo quando reconectar.", WARN)
+
+    def roll_request(self, req: dict):
+        """Rolagem pedida pela ficha (botão de perícia, ataque, dano...). Mostra o pedido no formulário e rola.
+
+        A marcação de Privada do mestre vale também para estas rolagens.
+        """
+        if req.get("sides") in dice.DICE:  # d2/d3 não têm botão: rola mesmo assim
+            self.die.set(f"d{req['sides']}")
+        for entry, value in ((self.qty, req.get("qty", 1)), (self.bonus, req.get("bonus", 0))):
+            entry.delete(0, tk.END)
+            entry.insert(0, str(value))
+        mode = req.get("mode", dice.NORMAL)
+        self.mode.set(next(label for label, m in MODE_LABELS.items() if m == mode))
+        self.extra.configure(state="normal")
+        self.extra.delete(0, tk.END)
+        self.extra.insert(0, str(req.get("extra") or 1))
+        self._update_extra()
+        self.roll({**req, "private": bool(self.private and self.private.get())})
 
     def set_enabled(self, enabled: bool):
         self.btn_roll.configure(state="normal" if enabled else "disabled")

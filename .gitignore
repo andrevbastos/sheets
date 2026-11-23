@@ -19,9 +19,8 @@ wheels/
 
 # Fichas de personagens (só o template e os exemplos vão para o git)
 sheets/*.json
-!sheets/sheet-template.json
-!sheets/sheet-example.json
-!sheets/sheet-example2.json
+!sheets/dnd-template.json
+!sheets/dnd-example.json
 !sheets/ordem-template.json
 !sheets/ordem-example.json
 

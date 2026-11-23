@@ -50,7 +50,7 @@ def server():
 @pytest.fixture
 def sheet_file(tmp_path):
     path = tmp_path / "heroi.json"
-    path.write_text(open("sheets/sheet-example.json", encoding="utf-8").read(), encoding="utf-8")
+    path.write_text(open("sheets/dnd-example.json", encoding="utf-8").read(), encoding="utf-8")
     return str(path)
 
 

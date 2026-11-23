@@ -1,35 +1,48 @@
 """Tela da ficha de Ordem Paranormal (mesma interface do mestre, do jogador e do modo offline).
 
-Os campos são editáveis no lugar e registrados com o caminho deles na ficha (ex.: ("pv", "atual")).
-Depois de cada edição as regras do livro são reaplicadas (src/ordem.apply_rules) e os valores
-calculados são redesenhados. Quando chega uma ficha nova pela rede, só os campos que mudaram são
-reescritos, e o campo em que a pessoa está digitando não é tocado.
+A mecânica dos campos editáveis fica em src/ui/sheet_base.py; aqui ficam a disposição da ficha e as
+regras do livro (src/ordem.apply_rules), reaplicadas a cada edição.
 """
 import tkinter as tk
-import tkinter.font  # noqa: F401  (tk.font, usado para medir a altura das linhas)
 
 import customtkinter as ctk
 
 from src import ordem
 from src.sheet_io import to_int
-from src.ui.common import (BORDER, BUTTON, BUTTON_HOVER, ERROR, INPUT, PANEL, PANEL_DARK, TEXT, TEXT_DIM,
-                           TEXT_FAINT, TEXT_MUTED, TITLE_FONT, TabBar, fmt_bonus, small_button)
+from src.ui.common import (BUTTON, BUTTON_HOVER, ERROR, INPUT, PANEL, PANEL_DARK, TEXT, TEXT_DIM, TEXT_FAINT,
+                           TEXT_MUTED, TabBar, fmt_bonus, small_button, update, update_bar)
+from src.ui.sheet_base import BaseSheetView
 
 SYSTEM = ordem.SYSTEM
 RESOURCE_COLORS = {"pv": "#c0392b", "pe": "#d4a017", "san": "#2e86c1"}
-TABS = ["Perícias", "Ataques", "Habilidades", "Inventário", "Descrição"]
+TABS = ["Perícias", "Ataques", "Habilidades", "Rituais", "Inventário", "Descrição"]
+CIRCULOS = [f"{c}º" for c in ordem.CUSTO_CIRCULO]
 CLASS_NAMES = [c["nome"] for c in ordem.CLASSES.values()]
 GRADE_LABELS = {value: label for value, label in ordem.GRAUS}
 GRADE_VALUES = {label: value for value, label in ordem.GRAUS}
 
 
-class SheetView(ctk.CTkFrame):
-    def __init__(self, master, sheet: dict, on_change=None):
-        super().__init__(master, fg_color="transparent")
-        self.sheet = sheet
-        self.on_change = on_change
-        self.color = sheet.get("cor", "#8e44ad")
-        self._build()
+class SheetView(BaseSheetView):
+    """Ficha de agente: regras do livro aplicadas por src/ordem.apply_rules."""
+    apply_rules = staticmethod(ordem.apply_rules)
+
+    def _needs_rebuild(self):
+        # classe nova troca PV/PE/SAN manuais por calculados (ou o contrário)
+        return ordem.class_key(self.sheet) != self._built_class
+
+    @staticmethod
+    def _roll_variant(req, variant):
+        """Shift+clique = +1d20, Ctrl+clique = −1d20 (o "+O"/"−O" do livro). Com 0 dados, rola 2 e fica com o pior."""
+        n_dados = {"vantagem": req.get("extra", 0) + 1, "desvantagem": 0}.get(req.get("mode"), 1)
+        n_dados = max(0, n_dados + (1 if variant == "mais" else -1))
+        sinal = "+" if variant == "mais" else "−"
+        return ordem.teste_request(n_dados, req.get("bonus", 0), f"{req.get('label', '')} ({sinal}1 dado)".strip())
+
+    @staticmethod
+    def _display(value, kind):
+        if kind == "grade":
+            return GRADE_LABELS.get(value, GRADE_LABELS[0])
+        return BaseSheetView._display(value, kind)
 
     # ================================================================= API
     def set_sheet(self, new_sheet: dict):
@@ -43,110 +56,12 @@ class SheetView(ctk.CTkFrame):
             self._populate_attacks()
         if len(old.get("habilidades", [])) != len(new_sheet.get("habilidades", [])):
             self._populate_abilities()
+        if len(old.get("rituais", [])) != len(new_sheet.get("rituais", [])):
+            self._populate_rituals()
         if len(old.get("inventario", {}).get("itens", [])) != len(new_sheet.get("inventario", {}).get("itens", [])):
             self._populate_items()
         self._sync_fields()
         self._refresh_computed()
-
-    # ================================================================= caminho na ficha
-    def _get(self, path):
-        value = self.sheet
-        for key in path:
-            try:
-                value = value[key]
-            except (KeyError, IndexError, TypeError):
-                return None
-        return value
-
-    def _set(self, path, value):
-        target = self.sheet
-        for key in path[:-1]:
-            target = target[key]
-        target[path[-1]] = value
-
-    # ================================================================= campos registrados
-    @staticmethod
-    def _display(value, kind):
-        if kind == "grade":
-            return GRADE_LABELS.get(value, GRADE_LABELS[0])
-        return "" if value is None else str(value)
-
-    @staticmethod
-    def _read(widget, kind):
-        if kind == "text":
-            return "" if getattr(widget, "_hint", False) else widget.get("1.0", "end-1c")
-        return widget.get()
-
-    def _write(self, widget, value, kind):
-        text = self._display(value, kind)
-        if kind == "text":
-            self._hide_hint(widget)
-            widget.delete("1.0", "end")
-            widget.insert("1.0", text)
-            self._show_hint(widget)
-        elif kind in ("combo", "grade"):
-            widget.set(text)
-        else:
-            widget.delete(0, tk.END)
-            if text:
-                widget.insert(0, text)
-
-    def _commit(self, path, value):
-        """Grava um valor editado, reaplica as regras e avisa quem estiver ouvindo."""
-        if value == self._get(path):
-            self._sync_fields()
-            return
-        self._set(path, value)
-        self._changed()
-
-    def _field(self, parent, path, kind="str", width=60, placeholder="", size=11, bold=False, justify="left",
-               clamp=None, transparent=False, text_color=TEXT, height=26):
-        entry = ctk.CTkEntry(
-            parent, width=width, height=height, placeholder_text=placeholder, justify=justify,
-            font=ctk.CTkFont(size=size, weight="bold" if bold else "normal"), text_color=text_color,
-            fg_color="transparent" if transparent else INPUT, border_width=0 if transparent else 1,
-            border_color=BORDER,
-        )
-        self._write(entry, self._get(path), kind)
-        self.fields.append((entry, path, kind))
-
-        def save(defocus):
-            try:
-                raw = entry.get()
-            except tk.TclError:
-                return
-            current = self._get(path)
-            if kind == "int":
-                value = to_int(raw, current if isinstance(current, int) else 0)
-                if clamp:
-                    value = clamp(value)
-            else:
-                value = raw.strip()
-            self._commit(path, value)
-            if defocus:
-                self.winfo_toplevel().focus()
-
-        entry.bind("<Return>", lambda *_: save(True))
-        entry.bind("<FocusOut>", lambda *_: save(False))
-        return entry
-
-    def _combo(self, parent, path, values, width=200):
-        """Caixa com lista (dá para escolher ou digitar)."""
-        combo = ctk.CTkComboBox(parent, values=values, width=width, height=26, fg_color=INPUT, border_color=BORDER,
-                                button_color=BUTTON, button_hover_color=BUTTON_HOVER, font=ctk.CTkFont(size=11),
-                                command=lambda v: self._commit(path, v.strip()))
-        self._write(combo, self._get(path), "combo")
-        self.fields.append((combo, path, "combo"))
-
-        def save(_event=None):
-            try:
-                self._commit(path, combo.get().strip())
-            except tk.TclError:
-                pass
-
-        combo.bind("<Return>", save)
-        combo.bind("<FocusOut>", save)
-        return combo
 
     def _grade(self, parent, path):
         """Menu do grau de treinamento (Destreinado/Treinado/Veterano/Expert)."""
@@ -157,143 +72,6 @@ class SheetView(ctk.CTkFrame):
         self._write(menu, self._get(path), "grade")
         self.fields.append((menu, path, "grade"))
         return menu
-
-    def _show_hint(self, box):
-        """Área vazia e sem foco mostra o texto de exemplo em cinza (nunca vai para a ficha)."""
-        placeholder = getattr(box, "_placeholder", None)
-        if (placeholder and not getattr(box, "_hint", False) and not self._has_focus(box)
-                and box.get("1.0", "end-1c") == ""):
-            box.insert("1.0", placeholder)
-            box.configure(text_color=TEXT_FAINT)
-            box._hint = True
-
-    @staticmethod
-    def _hide_hint(box):
-        if getattr(box, "_hint", False):
-            box.delete("1.0", "end")
-            box.configure(text_color=box._normal_color)
-            box._hint = False
-
-    def _textbox(self, parent, path, auto_height=False, text_color=TEXT, placeholder=None):
-        """Texto com quebra de linha. Com auto_height, a altura acompanha o tamanho do texto."""
-        box = ctk.CTkTextbox(parent, height=28 if auto_height else 110, wrap="word", font=ctk.CTkFont(size=11),
-                             text_color=text_color,
-                             fg_color="transparent" if auto_height else INPUT,
-                             border_color=BORDER, border_width=0 if auto_height else 1,
-                             activate_scrollbars=not auto_height)
-        box._placeholder, box._normal_color, box._hint = placeholder, text_color, False
-        box.bind("<FocusIn>", lambda *_: self._hide_hint(box))
-        self._write(box, self._get(path), "text")
-        self.fields.append((box, path, "text"))
-
-        if auto_height:
-            def fit(_event=None):
-                try:
-                    inner = box._textbox
-                    content = inner.count("1.0", "end", "ypixels")  # altura real do texto, já com as quebras
-                    content = content[0] if isinstance(content, tuple) else (content or 0)
-                    content = max(content, tk.font.Font(font=inner.cget("font")).metrics("linespace"))
-                    # + margens internas do CTkTextbox (pady do texto e 6 px do grid) e uma folga
-                    height = (content + 2 * int(inner.cget("pady"))) / box._get_widget_scaling() + 14
-                    if abs(box.cget("height") - height) > 1:
-                        box.configure(height=height)
-                except (tk.TclError, AttributeError):
-                    pass
-
-            box._fit = fit
-            box.bind("<KeyRelease>", fit)
-            box.bind("<FocusOut>", lambda *_: box.after_idle(fit), add="+")
-            box._textbox.bind("<Configure>", fit, add="+")
-            box.after_idle(fit)
-
-        def save(_event=None):
-            try:
-                value = self._read(box, "text").strip()
-            except tk.TclError:
-                return
-            if value != self._get(path):
-                self._set(path, value)
-                self._changed()
-            box.after_idle(lambda: box.winfo_exists() and self._show_hint(box))
-
-        box.bind("<FocusOut>", save)
-        return box
-
-    def _has_focus(self, widget):
-        focus = self.focus_get()
-        inner = getattr(widget, "_entry", None) or getattr(widget, "_textbox", None)
-        return focus is not None and focus in (widget, inner)
-
-    def _sync_fields(self):
-        """Reescreve os campos que não batem com a ficha (menos o que está sendo editado)."""
-        alive = []
-        for widget, path, kind in self.fields:
-            if not widget.winfo_exists():
-                continue
-            alive.append((widget, path, kind))
-            if self._has_focus(widget):
-                continue
-            value = self._get(path)
-            if self._read(widget, kind) != self._display(value, kind):
-                self._write(widget, value, kind)
-                if hasattr(widget, "_fit"):
-                    widget.after_idle(widget._fit)
-        self.fields = alive
-
-    def _computed(self, fn):
-        """Registra algo calculado (rótulo, barra) para atualizar depois de cada mudança."""
-        self.computed.append(fn)
-        fn()
-
-    def _refresh_computed(self):
-        alive = []
-        for fn in self.computed:
-            try:
-                fn()
-                alive.append(fn)
-            except tk.TclError:
-                pass  # widget destruído
-        self.computed = alive
-
-    def _changed(self):
-        old_class = self._built_class
-        ordem.apply_rules(self.sheet)
-        if ordem.class_key(self.sheet) != old_class:
-            self.after_idle(self._rebuild)  # troca campos manuais por calculados (ou o contrário)
-        else:
-            self._sync_fields()
-            self._refresh_computed()
-        if self.on_change:
-            self.on_change(self.sheet)
-
-    # ================================================================= construção
-    def _get_color(self):
-        return self.color
-
-    def _card(self, parent, title=None, **pack):
-        card = ctk.CTkFrame(parent, fg_color=PANEL, border_color=self.color, border_width=2, corner_radius=10)
-        card.pack(**pack)
-        if title:
-            ctk.CTkLabel(card, text=title, font=ctk.CTkFont(family=TITLE_FONT, size=13, weight="bold"),
-                         text_color=TEXT).pack(pady=(8, 4))
-        return card
-
-    @staticmethod
-    def _caption(parent, text):
-        return ctk.CTkLabel(parent, text=text, font=ctk.CTkFont(size=9, weight="bold"), text_color=TEXT_MUTED)
-
-    def _value_label(self, parent, fn, size=15, **kwargs):
-        """Rótulo com valor calculado, atualizado a cada mudança."""
-        label = ctk.CTkLabel(parent, text="", font=ctk.CTkFont(size=size, weight="bold"), text_color=TEXT, **kwargs)
-        self._computed(lambda: label.configure(text=str(fn())))
-        return label
-
-    def _rebuild(self):
-        active = self.tabs.active if hasattr(self, "tabs") else None
-        for child in self.winfo_children():
-            child.destroy()
-        self.color = self.sheet.get("cor", self.color)
-        self._build(active)
 
     def _build(self, active_tab=None):
         self.fields = []
@@ -309,7 +87,7 @@ class SheetView(ctk.CTkFrame):
         self._field(right, ("jogador",), width=160).pack(side=tk.LEFT)
         self.lbl_title = ctk.CTkLabel(right, text="", font=ctk.CTkFont(size=12), text_color=TEXT_DIM)
         self.lbl_title.pack(side=tk.LEFT, padx=(16, 0))
-        self._computed(lambda: self.lbl_title.configure(
+        self._computed(lambda: update(self.lbl_title, 
             text=f"{self.sheet.get('classe') or 'Sem classe'}  |  NEX {self.sheet.get('nex', 0)}%"))
 
         body = ctk.CTkFrame(self, fg_color="transparent")
@@ -349,7 +127,7 @@ class SheetView(ctk.CTkFrame):
         origin_info = ctk.CTkLabel(grid, text="", font=ctk.CTkFont(size=10), text_color=TEXT_DIM,
                                    wraplength=280, justify=tk.LEFT, anchor="w")
         origin_info.grid(row=1, column=1, sticky="ew", pady=(0, 4))
-        self._computed(lambda: origin_info.configure(text=self._origin_text()))
+        self._computed(lambda: update(origin_info, text=self._origin_text()))
         self._caption(grid, "CLASSE").grid(row=2, column=0, sticky="w", pady=3, padx=(0, 8))
         self._combo(grid, ("classe",), CLASS_NAMES).grid(row=2, column=1, sticky="ew", pady=3)
 
@@ -416,7 +194,7 @@ class SheetView(ctk.CTkFrame):
 
         bar = ctk.CTkProgressBar(frame, fg_color=BUTTON, progress_color=color, height=8)
         bar.pack(fill=tk.X, padx=10, pady=6)
-        self._computed(lambda k=key, b=bar: b.set(self.sheet[k]["atual"] / max(1, self.sheet[k]["max"])))
+        self._computed(lambda k=key, b=bar: update_bar(b, self.sheet[k]["atual"] / max(1, self.sheet[k]["max"])))
 
         ctrl = ctk.CTkFrame(frame, fg_color="transparent")
         ctrl.pack(fill=tk.X, padx=10, pady=(0, 8))
@@ -452,7 +230,7 @@ class SheetView(ctk.CTkFrame):
         formula.pack(side=tk.LEFT, padx=10)
         agi = ctk.CTkLabel(formula, text="", font=ctk.CTkFont(size=12), text_color=TEXT_DIM)
         agi.pack(side=tk.LEFT)
-        self._computed(lambda: agi.configure(
+        self._computed(lambda: update(agi, 
             text=f"= 10 + AGI ({self.sheet['atributos']['agi']})"
                  + (f" + {ordem.defesa_origem(self.sheet)} origem" if ordem.defesa_origem(self.sheet) else "") + " +"))
         for idx, (label, key) in enumerate((("Equip.", "equipamento"), ("Outros", "outros"))):
@@ -465,16 +243,17 @@ class SheetView(ctk.CTkFrame):
 
         warn = ctk.CTkLabel(card, text="", font=ctk.CTkFont(size=10, weight="bold"), text_color=ERROR)
         warn.pack(anchor=tk.W, padx=12)
-        self._computed(lambda: warn.configure(
+        self._computed(lambda: update(warn, 
             text="Sobrecarregado: −5 na Defesa e nas perícias de carga, −3m de deslocamento"
             if ordem.sobrecarregado(self.sheet) else ""))
 
         grid = ctk.CTkFrame(card, fg_color="transparent")
         grid.pack(fill=tk.X, padx=12, pady=(4, 10))
         grid.grid_columnconfigure(1, weight=1)
-        for r, (label, key) in enumerate((("PROTEÇÃO", "protecao"), ("RESISTÊNCIAS", "resistencias"))):
-            self._caption(grid, label).grid(row=r, column=0, sticky="w", pady=3, padx=(0, 8))
-            self._field(grid, (key,), width=200).grid(row=r, column=1, sticky="ew", pady=3)
+        for r, (label, key, hint) in enumerate((("PROTEÇÃO", "protecao", "ex.: colete leve (+2 Defesa)"),
+                                                 ("RESISTÊNCIAS", "resistencias", "ex.: balístico 5, perfuração 2"))):
+            self._caption(grid, label).grid(row=r, column=0, sticky="nw", pady=(7, 3), padx=(0, 8))
+            self._textbox(grid, (key,), framed=True, placeholder=hint).grid(row=r, column=1, sticky="ew", pady=3)
 
     # ----------------------------------------------------------------- abas
     def _build_tabs(self, parent, active_tab):
@@ -491,6 +270,7 @@ class SheetView(ctk.CTkFrame):
         self.attacks_view = views["Ataques"]
         self._populate_attacks()
         self._build_abilities(views["Habilidades"])
+        self._build_rituals(views["Rituais"])
         self._build_inventory(views["Inventário"])
         self._build_description(views["Descrição"])
         self.tabs.switch(active_tab if active_tab in views else None)
@@ -500,7 +280,7 @@ class SheetView(ctk.CTkFrame):
         head.pack(fill=tk.X, pady=(0, 6))
         scroll = ctk.CTkScrollableFrame(view, fg_color=PANEL_DARK)
         scroll.pack(fill=tk.BOTH, expand=True)
-        widths = (24, 200, 46, 56, 112, 56, 56)
+        widths = (24, 200, 46, 56, 112, 56, 62)
         for col, (text, w) in enumerate(zip(("", "PERÍCIA", "ATRIB.", "DADOS", "TREINO", "OUTROS", "BÔNUS"), widths)):
             for frame in (head, scroll):
                 frame.grid_columnconfigure(col, minsize=w, weight=1 if col == 1 else 0)
@@ -510,7 +290,7 @@ class SheetView(ctk.CTkFrame):
             marks = ("*" if so_treinada else "") + ("+" if carga else "")
             dot = ctk.CTkLabel(scroll, text="", font=ctk.CTkFont(size=13))
             dot.grid(row=r, column=0, pady=1)
-            self._computed(lambda k=key, d=dot: d.configure(
+            self._computed(lambda k=key, d=dot: update(d, 
                 text="●" if self.sheet["pericias"][k]["treino"] > 0 else "○",
                 text_color=self.color if self.sheet["pericias"][k]["treino"] > 0 else "#444444"))
 
@@ -524,91 +304,19 @@ class SheetView(ctk.CTkFrame):
             ctk.CTkLabel(scroll, text=attr.upper(), font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).grid(row=r, column=2)
             dice = ctk.CTkLabel(scroll, text="", font=ctk.CTkFont(size=11), text_color=TEXT_DIM)
             dice.grid(row=r, column=3)
-            self._computed(lambda a=attr, d=dice: d.configure(text=ordem.dados(self.sheet, a)))
+            self._computed(lambda a=attr, d=dice: update(d, text=ordem.dados(self.sheet, a)))
             self._grade(scroll, ("pericias", key, "treino")).grid(row=r, column=4, pady=1)
             self._field(scroll, ("pericias", key, "outros"), kind="int", width=40, justify="center",
                         height=22).grid(row=r, column=5, pady=1)
-            bonus = ctk.CTkLabel(scroll, text="", font=ctk.CTkFont(size=12, weight="bold"))
-            bonus.grid(row=r, column=6)
-            self._computed(lambda k=key, b=bonus: b.configure(
-                text=fmt_bonus(ordem.bonus_pericia(self.sheet, k)),
-                text_color=ERROR if k in ordem.PERICIAS_CARGA and ordem.sobrecarregado(self.sheet) else TEXT))
+            # o próprio bônus é o botão de rolar (não gasta coluna)
+            self._bonus_button(
+                scroll, lambda k=key: ordem.pericia_request(self.sheet, k),
+                lambda k=key: fmt_bonus(ordem.bonus_pericia(self.sheet, k)),
+                lambda k=key: ERROR if k in ordem.PERICIAS_CARGA and ordem.sobrecarregado(self.sheet) else TEXT,
+            ).grid(row=r, column=6, pady=1)
 
         ctk.CTkLabel(view, text="+ Penalidade de carga.   * Somente treinada.   2d20↓ = atributo 0: rola 2d20 e fica com o pior.",
                      font=ctk.CTkFont(size=9, slant="italic"), text_color=TEXT_FAINT).pack(anchor=tk.W, pady=(4, 0))
-
-    # ----------------------------------------------------------------- listas editáveis
-    def _list_section(self, view, columns, placeholders, on_add):
-        """Linha de 'adicionar' + área rolável. columns = [(largura, expande)]."""
-        add = ctk.CTkFrame(view, fg_color="transparent")
-        add.pack(fill=tk.X, pady=(0, 8))
-        entries = []
-        for (width, expand), placeholder in zip(columns, placeholders):
-            entry = ctk.CTkEntry(add, width=width, height=26, placeholder_text=placeholder, fg_color=INPUT,
-                                 border_color=BORDER, font=ctk.CTkFont(size=11))
-            entry.pack(side=tk.LEFT, padx=3, fill=tk.X if expand else None, expand=expand)
-            entries.append(entry)
-        button = ctk.CTkButton(add, text="Adicionar", width=80, height=26, fg_color=BUTTON, hover_color=BUTTON_HOVER,
-                               font=ctk.CTkFont(size=11), command=lambda: on_add(entries))
-        button.pack(side=tk.RIGHT, padx=(5, 0))
-        for entry in entries:
-            entry.bind("<Return>", lambda *_: button.invoke())
-        scroll = ctk.CTkScrollableFrame(view, fg_color=PANEL_DARK)
-        scroll.pack(fill=tk.BOTH, expand=True)
-        return scroll
-
-    def _list_rows(self, scroll, base_path, items, columns, keys, on_remove, first_bold=True, wrap_key=None,
-                   affixes=None, clamps=None, placeholder=None):
-        """Uma linha editável por item. `wrap_key` vai numa área de texto com quebra de linha embaixo.
-        `affixes` = {chave: (texto antes, texto depois)} fixos ao redor do campo (ex.: "Pág." e "PE")."""
-        affixes = affixes or {}
-        for child in scroll.winfo_children():
-            child.destroy()
-        for idx in range(len(items)):
-            row = ctk.CTkFrame(scroll, fg_color=PANEL)
-            row.pack(fill=tk.X, pady=3, padx=4)
-            line = ctk.CTkFrame(row, fg_color="transparent")
-            line.pack(fill=tk.X)
-            for c, ((width, expand), key) in enumerate(zip(columns, keys)):
-                if key == wrap_key:
-                    continue
-                kind = "int" if key == "espacos" else "str"
-                before, after = affixes.get(key, (None, None))
-                if before:
-                    ctk.CTkLabel(line, text=before, font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).pack(
-                        side=tk.LEFT, padx=(10, 0))
-                clamp = (lambda v, f=clamps[key], i=idx: f(i, v)) if clamps and key in clamps else None
-                entry = self._field(line, base_path + (idx, key), kind=kind, width=width, transparent=True,
-                                    clamp=clamp, bold=first_bold and c == 0, size=12 if c == 0 else 11,
-                                    text_color=self.color if first_bold and c == 0 else TEXT,
-                                    # colado no rótulo: "2 PE" alinha à direita, "Pág. 24" à esquerda
-                                    justify="right" if after else "left" if before else
-                                    "center" if kind == "int" else "left")
-                entry.pack(side=tk.LEFT, padx=3, pady=3, fill=tk.X if expand else None, expand=expand)
-                if after:
-                    ctk.CTkLabel(line, text=after, font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).pack(
-                        side=tk.LEFT, padx=(0, 10))
-            small_button(line, "X", lambda i=idx: on_remove(i), width=24, danger=True,
-                         height=20).pack(side=tk.RIGHT, padx=8)
-            if wrap_key:
-                self._textbox(row, base_path + (idx, wrap_key), auto_height=True, text_color=TEXT_DIM,
-                              placeholder=placeholder).pack(fill=tk.X, padx=6, pady=(0, 6))
-
-    def _append(self, path, item, entries, repopulate):
-        if not item.get("nome"):
-            return
-        self._get(path).append(item)
-        for entry in entries:
-            entry.delete(0, tk.END)
-        repopulate()
-        self._changed()
-
-    def _remove(self, path, idx, repopulate):
-        items = self._get(path)
-        if idx < len(items):
-            items.pop(idx)
-            repopulate()
-            self._changed()
 
     # Ataques
     ATTACK_COLS = [(140, True), (90, False), (80, False), (140, True)]
@@ -624,22 +332,30 @@ class SheetView(ctk.CTkFrame):
                                     self._populate_attacks))
         self._list_rows(scroll, ("ataques",), self.sheet["ataques"], self.ATTACK_COLS, keys,
                         lambda i: self._remove(("ataques",), i, self._populate_attacks), wrap_key="especial",
-                        placeholder="Crítico, alcance, efeito especial...")
+                        placeholder="Crítico, alcance, efeito especial...", rolls=self._attack_rolls(("ataques",)),
+                        affixes={"teste": ("Teste", None), "dano": ("Dano", None)})
+
+    def _attack_rolls(self, items):
+        """{"teste": f(idx), "dano": f(idx)}: pedidos de rolagem de um ataque (ou ação de ameaça)."""
+        def item(idx):
+            lista = self._get(items) or []
+            return lista[idx] if idx < len(lista) else {}
+
+        def teste(idx):
+            it = item(idx)
+            return ordem.ataque_request(self.sheet, it.get("teste"), it.get("nome") or "Ataque")
+
+        def dano(idx):
+            it = item(idx)
+            return ordem.dano_request(it.get("dano"), f"{it.get('nome') or 'Ataque'} (dano)")
+
+        return {"teste": teste, "dano": dano}
 
     # Habilidades & Rituais
     ABILITY_COLS = [(150, True), (40, False), (40, False), (170, True)]
 
     def _build_abilities(self, view):
-        top = ctk.CTkFrame(view, fg_color="transparent")
-        top.pack(fill=tk.X, pady=(0, 8))
-        self._caption(top, "DT DE RITUAIS").pack(side=tk.LEFT, padx=(4, 8))
-        self._value_label(top, lambda: ordem.dt_rituais(self.sheet), size=16).pack(side=tk.LEFT)
-        dt_hint = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=10), text_color=TEXT_FAINT)
-        dt_hint.pack(side=tk.LEFT, padx=10)
-        self._computed(lambda: dt_hint.configure(
-            text=f"= 10 + limite de PE ({ordem.limite_pe(self.sheet)}) + PRE ({self.sheet['atributos']['pre']})"))
-        self.abilities_view = ctk.CTkFrame(view, fg_color="transparent")
-        self.abilities_view.pack(fill=tk.BOTH, expand=True)
+        self.abilities_view = view
         self._populate_abilities()
 
     def _populate_abilities(self):
@@ -648,13 +364,96 @@ class SheetView(ctk.CTkFrame):
             child.destroy()
         keys = ("nome", "custo", "pagina", "descricao")
         scroll = self._list_section(
-            view, self.ABILITY_COLS, ("Habilidade ou ritual", "PE", "Pág.", "Descrição"),
+            view, self.ABILITY_COLS, ("Habilidade ou poder", "PE", "Pág.", "Descrição"),
             lambda es: self._append(("habilidades",), {k: e.get().strip() for k, e in zip(keys, es)}, es,
                                     self._populate_abilities))
         self._list_rows(scroll, ("habilidades",), self.sheet["habilidades"], self.ABILITY_COLS, keys,
                         lambda i: self._remove(("habilidades",), i, self._populate_abilities),
                         wrap_key="descricao", affixes={"custo": (None, "PE"), "pagina": ("Pág.", None)},
                         placeholder="Descrição da habilidade...")
+
+    # Rituais (p. 118-121)
+    RITUAL_ADD_COLS = [(160, True), (110, False), (60, False), (50, False)]
+    RITUAL_DETAILS = (("execucao", "Execução", 80), ("alcance", "Alcance", 80), ("alvo", "Alvo/Área", 110),
+                      ("duracao", "Duração", 90), ("resistencia", "Resistência", 110), ("dano", "Dano", 80))
+
+    def _build_rituals(self, view):
+        top = ctk.CTkFrame(view, fg_color="transparent")
+        top.pack(fill=tk.X, pady=(0, 8))
+        self._caption(top, "DT DE RITUAIS").pack(side=tk.LEFT, padx=(4, 8))
+        self._value_label(top, lambda: ordem.dt_rituais(self.sheet), size=16).pack(side=tk.LEFT)
+        dt_hint = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=10), text_color=TEXT_FAINT)
+        dt_hint.pack(side=tk.LEFT, padx=10)
+        self._computed(lambda: update(dt_hint, 
+            text=f"= 10 + limite de PE ({ordem.limite_pe(self.sheet)}) + PRE ({self.sheet['atributos']['pre']})"))
+        self.rituals_view = ctk.CTkFrame(view, fg_color="transparent")
+        self.rituals_view.pack(fill=tk.BOTH, expand=True)
+        self._populate_rituals()
+
+    def _ritual(self, idx):
+        rituais = self.sheet.get("rituais", [])
+        return rituais[idx] if idx < len(rituais) else None
+
+    def _populate_rituals(self):
+        view = self.rituals_view
+        for child in view.winfo_children():
+            child.destroy()
+        path = ("rituais",)
+
+        def add(es):
+            nome, elemento, circulo, pagina = (e.get().strip() for e in es)
+            elemento = next((el for el in ordem.ELEMENTOS if el.lower() == elemento.lower()), "")
+            self._append(path, {"nome": nome, "elemento": elemento, "circulo": max(1, min(to_int(circulo, 1), 4)),
+                                "pagina": pagina, **{k: "" for k, *_ in self.RITUAL_DETAILS}, "descricao": ""},
+                         es, self._populate_rituals)
+
+        def dano(idx):
+            ritual = self._ritual(idx)
+            return ritual and ordem.dano_request(ritual["dano"], f"{ritual['nome'] or 'Ritual'} (dano)")
+
+        def custo(idx, label):
+            ritual = self._ritual(idx)
+            if ritual is None or not label.winfo_exists():
+                raise tk.TclError("ritual removido")  # sai da lista de calculados
+            update(label, text=f"{ordem.custo_ritual(ritual)} PE")
+
+        scroll = self._list_section(view, self.RITUAL_ADD_COLS, ("Ritual", "Elemento", "Círculo", "Pág."), add)
+        for idx in range(len(self.sheet["rituais"])):
+            base = path + (idx,)
+            row = ctk.CTkFrame(scroll, fg_color=PANEL)
+            row.pack(fill=tk.X, pady=3, padx=4)
+            line = ctk.CTkFrame(row, fg_color="transparent")
+            line.pack(fill=tk.X)
+            # da direita para a esquerda: X, página, custo, círculo, elemento; o nome ocupa o resto
+            small_button(line, "X", lambda i=idx: self._remove(path, i, self._populate_rituals), width=24,
+                         danger=True, height=20).pack(side=tk.RIGHT, padx=8)
+            self._field(line, base + ("pagina",), width=36, transparent=True).pack(side=tk.RIGHT)
+            ctk.CTkLabel(line, text="Pág.", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).pack(
+                side=tk.RIGHT, padx=(10, 0))
+            cost = ctk.CTkLabel(line, text="", width=44, font=ctk.CTkFont(size=11, weight="bold"), text_color=TEXT)
+            cost.pack(side=tk.RIGHT)
+            self._computed(lambda i=idx, c=cost: custo(i, c))
+            self._option(line, base + ("circulo",), CIRCULOS, width=56, kind="circulo",
+                         parse=lambda label: int(label[0])).pack(side=tk.RIGHT, padx=3)
+            self._option(line, base + ("elemento",), ordem.ELEMENTOS, width=118).pack(side=tk.RIGHT, padx=3)
+            self._field(line, base + ("nome",), width=150, transparent=True, bold=True, size=12,
+                        text_color=self.color).pack(side=tk.LEFT, padx=3, pady=3, fill=tk.X, expand=True)
+
+            details = ctk.CTkFrame(row, fg_color="transparent")
+            details.pack(fill=tk.X, padx=3)
+            for col in range(3):
+                details.grid_columnconfigure(col, weight=1, uniform="ritual")
+            for n, (key, label, width) in enumerate(self.RITUAL_DETAILS):
+                cell = details if key != "dano" else ctk.CTkFrame(details, fg_color="transparent")
+                entry = self._field(cell, base + (key,), width=width, placeholder=label, size=10, height=22)
+                if key == "dano":
+                    self._roll_button(cell, lambda i=idx: dano(i)).pack(side=tk.RIGHT, padx=(2, 0))
+                    entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                    entry = cell
+                entry.grid(row=n // 3, column=n % 3, sticky="ew", padx=2, pady=1)
+            self._textbox(row, base + ("descricao",), auto_height=True, text_color=TEXT_DIM,
+                          placeholder="Efeito do ritual, formas discente e verdadeira...").pack(
+                fill=tk.X, padx=6, pady=(0, 6))
 
     # Inventário
     ITEM_COLS = [(140, True), (70, False), (60, False), (140, True)]
@@ -682,7 +481,7 @@ class SheetView(ctk.CTkFrame):
         self._caption(line2, "CARGA").pack(side=tk.LEFT, padx=(16, 4))
         load = ctk.CTkLabel(line2, text="", font=ctk.CTkFont(size=12, weight="bold"))
         load.pack(side=tk.LEFT)
-        self._computed(lambda: load.configure(
+        self._computed(lambda: update(load, 
             text=f"{ordem.espacos_usados(self.sheet)} / {self.sheet['inventario']['carga_max']}"
                  f"  (máx. {ordem.carga_absoluta(self.sheet)})",
             text_color=ERROR if ordem.sobrecarregado(self.sheet) else TEXT))
@@ -696,7 +495,7 @@ class SheetView(ctk.CTkFrame):
     def _limit_label(self, label, cat):
         used = ordem.itens_por_categoria(self.sheet)[cat]
         limit = self.sheet["inventario"]["limite_itens"][cat]
-        label.configure(text=f"{cat}: {used}/{limit}", text_color=ERROR if used > limit else TEXT)
+        update(label, text=f"{cat}: {used}/{limit}", text_color=ERROR if used > limit else TEXT)
 
     def _populate_items(self):
         view = self.items_view
@@ -736,7 +535,7 @@ class SheetView(ctk.CTkFrame):
 
     def _inventory_warning(self, text):
         try:
-            self.inv_msg.configure(text=text, height=18 if text else 0)
+            update(self.inv_msg, text=text, height=18 if text else 0)
         except tk.TclError:
             pass
 

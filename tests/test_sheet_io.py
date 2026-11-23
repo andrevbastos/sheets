@@ -2,7 +2,7 @@ import json
 
 from src.sheet_io import create_new_sheet, load_sheet, normalize_sheet, save_sheet
 
-TEMPLATE = "sheets/sheet-template.json"
+TEMPLATE = "sheets/dnd-template.json"
 
 
 def test_ficha_nova_do_template_tem_numeros_e_listas_limpas(tmp_path):
@@ -21,7 +21,7 @@ def test_ficha_nova_do_template_tem_numeros_e_listas_limpas(tmp_path):
 
 
 def test_exemplo_carrega_sem_perder_dados():
-    sheet = load_sheet("sheets/sheet-example.json")
+    sheet = load_sheet("sheets/dnd-example.json")
     assert sheet["combate"]["hp_max"] == 12
     assert sheet["atributos"]["carisma"]["mod"] == -1
     assert len(sheet["inventario"]) == 7

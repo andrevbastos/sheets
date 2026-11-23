@@ -27,7 +27,7 @@ def test_vantagem_fica_com_o_maior():
     req = dice.clean_request({"sides": 20, "mode": "vantagem", "extra": 1, "bonus": 5})
     r = dice.roll(req, "Sofia", Fixed([12, 9]))
     assert r["total"] == 17
-    assert dice.describe(r) == "Sofia: 1d20 (Van 1) + 5 → [12, (9)] = 17"
+    assert dice.describe(r) == "Sofia: 2d20 (maior) + 5 → [12, (9)] = 17"
 
 
 def test_20_natural_e_sucesso_critico_e_1_e_falha():
@@ -61,7 +61,7 @@ def test_desvantagem_com_varios_extras_fica_com_o_menor():
     req = dice.clean_request({"sides": 20, "mode": "desvantagem", "extra": 2, "bonus": -1})
     r = dice.roll(req, "Mestre", Fixed([15, 3, 8]))
     assert r["total"] == 2
-    assert dice.describe(r) == "Mestre: 1d20 (Des 2) - 1 → [(15), 3, (8)] = 2"
+    assert dice.describe(r) == "Mestre: 3d20 (menor) - 1 → [(15), 3, (8)] = 2"
 
 
 def test_rolagem_privada_escondida():

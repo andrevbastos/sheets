@@ -121,7 +121,7 @@ class PlayerApp:
 
         body = ctk.CTkFrame(screen, fg_color="transparent")
         body.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        self.view = make_sheet_view(body, sheet, on_change=self.client.send_update)
+        self.view = make_sheet_view(body, sheet, on_change=self.client.send_update, on_roll=self.roll_from_sheet)
         self.view.pack(fill=tk.BOTH, expand=True)
 
     def _set_conn_label(self, state):
@@ -201,6 +201,12 @@ class PlayerApp:
             self.dice_window = DiceWindow(self.root, self.client.name, on_roll=self.client.send_roll)
             self.dice_window.set_history(self.rolls)
         self.dice_window.show()
+
+    def roll_from_sheet(self, req):
+        """Botão de rolar na ficha: abre a janela de dados (se precisar) e rola."""
+        self.open_dice()
+        if self.dice_window is not None:
+            self.dice_window.roll_request(req)
 
     def on_roll(self, client, roll):
         if client is not self.client:
