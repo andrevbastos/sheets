@@ -138,3 +138,76 @@ def test_shift_da_vantagem_no_dnd_e_mais_um_dado_no_ordem():
     assert OrdemView._roll_variant(dois, "mais")["extra"] == 2      # 3d20
     assert OrdemView._roll_variant(dois, "menos")["mode"] == "normal"  # 1d20
     assert OrdemView._roll_variant(ordem.teste_request(1, 0), "menos")["mode"] == "desvantagem"  # 0 dados: pior de 2
+
+
+# ------------------------------------------------------------------ vida, morte e descanso (fase 3)
+def ferido(**combate):
+    base = {"hp_max": 20, "hp_atual": 20}
+    base.update(combate)
+    return ficha(nivel=4, combate=base)
+
+
+def test_dano_tira_primeiro_os_pv_temporarios():
+    s = ferido(hp_temp=5)
+    dnd.sofrer_dano(s, 7)  # exemplo da p. 198
+    assert (s["combate"]["hp_atual"], s["combate"]["hp_temp"]) == (18, 0)
+
+
+def test_dano_com_0_pv_e_falha_contra_a_morte_e_cura_zera():
+    s = ferido(hp_atual=3)
+    dnd.sofrer_dano(s, 10)
+    assert s["combate"]["hp_atual"] == 0 and s["combate"]["morte"]["falhas"] == 0
+    dnd.sofrer_dano(s, 1)
+    assert s["combate"]["morte"]["falhas"] == 1
+    dnd.curar(s, 4)
+    assert s["combate"]["hp_atual"] == 4 and s["combate"]["morte"] == {"sucessos": 0, "falhas": 0}
+
+
+@pytest.mark.parametrize("classe, dado", [("Bárbaro", "d12"), ("Guerreiro", "d10"), ("Ladino", "d8"),
+                                          ("Mago", "d6"), ("Inventor", "")])
+def test_dado_de_vida_pela_classe(classe, dado):
+    s = ficha(classe=classe, nivel=3)
+    assert s["combate"]["dados_vida"] == {"dado": dado, "restantes": 3}
+
+
+def test_gastar_dado_de_vida_soma_constituicao():
+    s = ficha(classe="Guerreiro", atributos={"constituicao": {"valor": 14}})
+    req = dnd.dado_vida_request(s)
+    assert (req["sides"], req["bonus"]) == (10, 2)
+    s["combate"]["dados_vida"]["restantes"] = 0
+    assert dnd.dado_vida_request(s) is None
+
+
+def test_descansos():
+    s = ferido(hp_atual=5, hp_temp=3, dados_vida={"dado": "d10", "restantes": 0}, morte={"sucessos": 1})
+    s["recursos"] = [{"nome": "Fúria", "atual": 0, "max": 2, "recupera": "longo", "detalhes": ""},
+                     {"nome": "Retomar o Fôlego", "atual": 0, "max": 1, "recupera": "curto", "detalhes": ""},
+                     {"nome": "Poção", "atual": 0, "max": 3, "recupera": "", "detalhes": ""}]
+    s["magias"]["slots"]["1"] = {"atual": 0, "max": 3}
+    dnd.descanso_curto(s)
+    assert [r["atual"] for r in s["recursos"]] == [0, 1, 0]
+    assert dnd.descanso_longo(s)
+    c = s["combate"]
+    assert (c["hp_atual"], c["hp_temp"], c["morte"]["sucessos"]) == (20, 0, 0)
+    assert c["dados_vida"]["restantes"] == 2  # metade do nível 4
+    assert s["magias"]["slots"]["1"]["atual"] == 3
+    assert [r["atual"] for r in s["recursos"]] == [2, 1, 0]
+
+
+def test_descanso_longo_precisa_de_1_pv():
+    s = ferido(hp_atual=0)
+    assert dnd.descanso_longo(s) is False
+    assert s["combate"]["hp_atual"] == 0
+
+
+def test_recursos_antigos_da_aba_extra_viram_recursos():
+    s = load_sheet("sheets/dnd-example.json")
+    assert "recursos de classe" not in s["extra"]
+    assert s["combate"]["dados_vida"]["dado"] == "d10"  # "Dado de Vida (d10)"
+    nomes = {r["nome"]: r["recupera"] for r in s["recursos"]}
+    assert nomes == {"Retomar o Fôlego": "curto", "Surto de Ação": ""}
+
+
+def test_magias_tem_nivel():
+    s = ficha(magias={"lista": [{"nome": "Bola de Fogo", "nivel": "3"}, {"nome": "Luz"}]})
+    assert [m["nivel"] for m in s["magias"]["lista"]] == [3, 0]

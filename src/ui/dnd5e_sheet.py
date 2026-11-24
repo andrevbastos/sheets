@@ -5,12 +5,14 @@ modificadores, bônus de proficiência, perícias, testes de resistência, inici
 passiva e CD/bônus de magia a cada edição. A mecânica dos campos fica em src/ui/sheet_base.py.
 """
 import tkinter as tk
+from tkinter import messagebox
 
 import customtkinter as ctk
 
 from src import dnd
-from src.ui.common import (BUTTON, ERROR, OK, PANEL, PANEL_DARK, TEXT, TEXT_DIM, TEXT_FAINT, TEXT_MUTED, TabBar,
-                           fmt_bonus, small_button, update, update_bar)
+from src.sheet_io import to_int
+from src.ui.common import (BUTTON, ERROR, OK, PANEL, PANEL_DARK, TEXT, TEXT_DIM, TEXT_FAINT, TEXT_MUTED, TITLE_FONT,
+                           TabBar, fmt_bonus, small_button, update, update_bar)
 from src.ui.sheet_base import BaseSheetView
 
 SYSTEM = dnd.SYSTEM
@@ -20,6 +22,9 @@ GRAU_LABELS = dict(dnd.GRAUS)
 GRAU_VALUES = {label: value for value, label in dnd.GRAUS}
 NO_ATTR = "—"
 EXTRA_NAMES = {"cartas_destino": "Cartas de Destino"}
+RECUPERA_LABELS = {"": NO_ATTR, "curto": "Curto", "longo": "Longo"}  # descanso em que o recurso volta
+RECUPERA_VALUES = {label: value for value, label in RECUPERA_LABELS.items()}
+NIVEIS_MAGIA = ["Truque"] + [f"{n}º nível" for n in range(1, 10)]
 
 
 class SheetView(BaseSheetView):
@@ -36,6 +41,12 @@ class SheetView(BaseSheetView):
             return GRAU_LABELS.get(value, NO_ATTR)
         if kind == "atributo":
             return SIGLAS.get(value, NO_ATTR)
+        if kind == "dado":
+            return value or NO_ATTR
+        if kind == "recupera":
+            return RECUPERA_LABELS.get(value, NO_ATTR)
+        if kind == "nivel_magia":
+            return NIVEIS_MAGIA[value] if isinstance(value, int) and 0 <= value <= 9 else NIVEIS_MAGIA[0]
         return BaseSheetView._display(value, kind)
 
     # ================================================================= API
@@ -51,7 +62,9 @@ class SheetView(BaseSheetView):
                               ("inventario", self._populate_inventory)):
             if len(old.get(key, [])) != len(new_sheet.get(key, [])):
                 populate()
-        if len(old["magias"]["lista"]) != len(new_sheet["magias"]["lista"]):
+        if len(old.get("recursos", [])) != len(new_sheet.get("recursos", [])):
+            self._populate_resources()
+        if [m["nivel"] for m in old["magias"]["lista"]] != [m["nivel"] for m in new_sheet["magias"]["lista"]]:
             self._populate_spell_list()
         if old.get("extra") != new_sheet.get("extra"):
             for key in new_sheet.get("extra", {}):
@@ -88,6 +101,7 @@ class SheetView(BaseSheetView):
         self._build_identity(left)
         self._build_combat(left)
         self._build_saves(left)
+        self._build_resources(left)
         self._build_tabs(right_col, active_tab)
 
     # ----------------------------------------------------------------- coluna esquerda
@@ -140,8 +154,8 @@ class SheetView(BaseSheetView):
         card = self._card(parent, None, fill=tk.X, pady=(0, 10))
         top = ctk.CTkFrame(card, fg_color="transparent")
         top.pack(fill=tk.X, padx=12, pady=(10, 4))
-        for idx in range(3):
-            top.grid_columnconfigure(idx, weight=1)
+        for idx in range(4):
+            top.grid_columnconfigure(idx, weight=1, uniform="combate")
 
         def box(idx, label):
             frame = ctk.CTkFrame(top, fg_color=PANEL_DARK, corner_radius=6)
@@ -153,14 +167,21 @@ class SheetView(BaseSheetView):
                     transparent=True).pack(pady=(0, 6))
         ini = box(1, "INICIATIVA")
         self._bonus_button(ini, lambda: dnd.iniciativa_request(self.sheet, "Iniciativa"),
-                           lambda: fmt_bonus(dnd.iniciativa(self.sheet)), width=60, size=15).pack(pady=2)
+                           lambda: fmt_bonus(dnd.iniciativa(self.sheet)), width=56, size=14).pack(pady=2)
         line = ctk.CTkFrame(ini, fg_color="transparent")
         line.pack(pady=(0, 6))
-        ctk.CTkLabel(line, text="outros", font=ctk.CTkFont(size=9), text_color=TEXT_FAINT).pack(side=tk.LEFT, padx=3)
-        self._field(line, ("combate", "iniciativa_outros"), kind="int", width=32, height=20,
+        ctk.CTkLabel(line, text="outros", font=ctk.CTkFont(size=9), text_color=TEXT_FAINT).pack(side=tk.LEFT, padx=2)
+        self._field(line, ("combate", "iniciativa_outros"), kind="int", width=28, height=20,
                     justify="center").pack(side=tk.LEFT)
-        self._field(box(2, "DESLOCAMENTO"), ("combate", "deslocamento"), width=60, size=15, bold=True,
+        self._field(box(2, "DESLOC."), ("combate", "deslocamento"), width=56, size=15, bold=True,
                     justify="center", transparent=True).pack(pady=(0, 6))
+        # Inspiração (p. 125): tem ou não tem
+        star = ctk.CTkButton(box(3, "INSPIRAÇÃO"), text="", width=40, height=30, fg_color="transparent",
+                             hover_color=PANEL, font=ctk.CTkFont(size=22),
+                             command=lambda: self._commit(("inspiracao",), not self.sheet["inspiracao"]))
+        star.pack(pady=(0, 4))
+        self._computed(lambda: update(star, text="★" if self.sheet["inspiracao"] else "☆",
+                                      text_color=self.color if self.sheet["inspiracao"] else "#555555"))
 
         # Pontos de vida
         frame = ctk.CTkFrame(card, fg_color=PANEL_DARK, corner_radius=8)
@@ -168,8 +189,9 @@ class SheetView(BaseSheetView):
         head = ctk.CTkFrame(frame, fg_color="transparent")
         head.pack(fill=tk.X, padx=10, pady=(6, 0))
         ctk.CTkLabel(head, text="PV", font=ctk.CTkFont(size=16, weight="bold"), text_color=TEXT).pack(side=tk.LEFT)
-        ctk.CTkLabel(head, text="PONTOS DE VIDA", font=ctk.CTkFont(size=9, weight="bold"),
-                     text_color=TEXT_MUTED).pack(side=tk.LEFT, padx=8)
+        self._caption(head, "TEMP").pack(side=tk.LEFT, padx=(12, 4))
+        self._field(head, ("combate", "hp_temp"), kind="int", width=36, justify="center",
+                    clamp=lambda v: max(0, v)).pack(side=tk.LEFT)
         vals = ctk.CTkFrame(head, fg_color="transparent")
         vals.pack(side=tk.RIGHT)
         combate = ("combate",)
@@ -187,18 +209,177 @@ class SheetView(BaseSheetView):
             update_bar(bar, ratio)
             update(bar, progress_color=OK if ratio > 0.3 else ERROR)  # verde; vermelho com 30% ou menos
         self._computed(show_hp)
+
+        # dano e cura: botões rápidos ou um valor digitado (o dano tira primeiro os PV temporários)
         buttons = ctk.CTkFrame(frame, fg_color="transparent")
-        buttons.pack(fill=tk.X, padx=10, pady=(0, 8))
+        buttons.pack(fill=tk.X, padx=10, pady=(0, 6))
         for delta in (-5, -1, 1, 5):
             small_button(buttons, f"+{delta}" if delta > 0 else str(delta),
-                         lambda d=delta: self._adjust_hp(d)).pack(side=tk.LEFT, padx=3)
+                         lambda d=delta: self._hp_change(d)).pack(side=tk.LEFT, padx=2)
+        amount = ctk.CTkEntry(buttons, width=40, height=22, justify="center", placeholder_text="valor",
+                              font=ctk.CTkFont(size=10))
+        amount.pack(side=tk.LEFT, padx=(10, 2))
+        for text, sign in (("Dano", -1), ("Cura", 1)):
+            small_button(buttons, text, lambda s=sign: self._hp_from_entry(amount, s), width=44).pack(
+                side=tk.LEFT, padx=2)
+        amount.bind("<Return>", lambda *_: self._hp_from_entry(amount, -1))
 
-    def _adjust_hp(self, delta):
-        c = self.sheet["combate"]
-        value = max(0, min(c["hp_atual"] + delta, c["hp_max"]))
-        if value != c["hp_atual"]:
-            c["hp_atual"] = value
+        # dados de vida (p. 186): gastar um rola o dado + CON
+        dv = ctk.CTkFrame(frame, fg_color="transparent")
+        dv.pack(fill=tk.X, padx=10, pady=(0, 8))
+        self._caption(dv, "DADOS DE VIDA").pack(side=tk.LEFT)
+        self._option(dv, ("combate", "dados_vida", "dado"), [NO_ATTR] + dnd.DADOS_VIDA, width=64, kind="dado",
+                     parse=lambda label: "" if label == NO_ATTR else label).pack(side=tk.LEFT, padx=6)
+        self._field(dv, ("combate", "dados_vida", "restantes"), kind="int", width=30, height=22, justify="center",
+                    clamp=lambda v: max(0, min(v, self.sheet["nivel"]))).pack(side=tk.LEFT)
+        total = ctk.CTkLabel(dv, text="", font=ctk.CTkFont(size=11), text_color=TEXT_MUTED)
+        total.pack(side=tk.LEFT, padx=(3, 6))
+        self._computed(lambda: update(total, text=f"/ {self.sheet['nivel']}"))
+        self._roll_button(dv, self._spend_hit_die_request, text="Gastar", width=70).pack(side=tk.LEFT)
+
+        # testes contra a morte (p. 197): só aparecem com 0 PV
+        death = ctk.CTkFrame(frame, fg_color=PANEL, corner_radius=6)
+        state = {"shown": None}
+        self._caption(death, "MORTE").pack(side=tk.LEFT, padx=(8, 6), pady=6)
+        for key, label, color in (("sucessos", "sucessos", OK), ("falhas", "falhas", ERROR)):
+            for n in range(1, 4):
+                dot = ctk.CTkButton(death, text="", width=16, height=20, fg_color="transparent", hover_color=PANEL_DARK,
+                                    font=ctk.CTkFont(size=14),
+                                    command=lambda k=key, n=n: self._commit(
+                                        ("combate", "morte", k), n - 1 if self.sheet["combate"]["morte"][k] == n else n))
+                dot.pack(side=tk.LEFT)
+                self._computed(lambda d=dot, k=key, n=n, col=color: update(
+                    d, text="●" if self.sheet["combate"]["morte"][k] >= n else "○",
+                    text_color=col if self.sheet["combate"]["morte"][k] >= n else "#555555"))
+            ctk.CTkLabel(death, text=label, font=ctk.CTkFont(size=9), text_color=TEXT_MUTED).pack(
+                side=tk.LEFT, padx=(2, 8))
+        self._roll_button(death, lambda: dnd.morte_request(self.sheet)).pack(side=tk.RIGHT, padx=6)
+
+        def show_death():
+            c = self.sheet["combate"]
+            visible = c["hp_atual"] == 0 and c["hp_max"] > 0
+            if visible != state["shown"]:
+                state["shown"] = visible
+                if visible:
+                    death.pack(fill=tk.X, padx=10, pady=(0, 8))
+                else:
+                    death.pack_forget()
+        self._computed(show_death)
+
+    def _hp_change(self, delta):
+        if delta < 0:
+            dnd.sofrer_dano(self.sheet, -delta)
+        else:
+            dnd.curar(self.sheet, delta)
+        self._changed()
+
+    def _hp_from_entry(self, entry, sign):
+        valor = max(0, to_int(entry.get(), 0))
+        entry.delete(0, tk.END)
+        self.winfo_toplevel().focus()
+        if valor:
+            self._hp_change(sign * valor)
+
+    def _spend_hit_die_request(self):
+        """O botão rola o dado de vida e já desconta um dos restantes."""
+        req = dnd.dado_vida_request(self.sheet)
+        if req is None:
+            return None
+        return {**req, "_on_roll": self._spend_hit_die}
+
+    def _spend_hit_die(self):
+        dv = self.sheet["combate"]["dados_vida"]
+        if dv["restantes"] > 0:
+            dv["restantes"] -= 1
             self._changed()
+
+    # ----------------------------------------------------------------- recursos e descanso (p. 186)
+    def _build_resources(self, parent):
+        card = self._card(parent, None, fill=tk.X, pady=(0, 10))
+        head = ctk.CTkFrame(card, fg_color="transparent")
+        head.pack(fill=tk.X, padx=12, pady=(8, 4))
+        ctk.CTkLabel(head, text="RECURSOS", font=ctk.CTkFont(family=TITLE_FONT, size=13, weight="bold"),
+                     text_color=TEXT).pack(side=tk.LEFT)
+        small_button(head, "Descanso longo", self._long_rest, width=96).pack(side=tk.RIGHT, padx=2)
+        small_button(head, "Descanso curto", self._short_rest, width=96).pack(side=tk.RIGHT, padx=2)
+        self.resources_view = ctk.CTkFrame(card, fg_color="transparent")
+        self.resources_view.pack(fill=tk.X, padx=8)
+
+        add = ctk.CTkFrame(card, fg_color="transparent")
+        add.pack(fill=tk.X, padx=12, pady=(4, 10))
+        name = ctk.CTkEntry(add, height=24, placeholder_text="Novo recurso (ex.: Fúria)", font=ctk.CTkFont(size=11))
+        name.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        maximum = ctk.CTkEntry(add, width=44, height=24, placeholder_text="máx.", justify="center",
+                               font=ctk.CTkFont(size=11))
+        maximum.pack(side=tk.LEFT, padx=4)
+
+        def add_resource():
+            nome = name.get().strip()
+            if not nome:
+                return
+            valor = max(0, to_int(maximum.get(), 1))
+            self.sheet["recursos"].append({"nome": nome, "atual": valor, "max": valor, "recupera": "longo",
+                                           "detalhes": ""})
+            name.delete(0, tk.END)
+            maximum.delete(0, tk.END)
+            self._populate_resources()
+            self._changed()
+
+        small_button(add, "Adicionar", add_resource, width=70, height=24).pack(side=tk.LEFT)
+        for entry in (name, maximum):
+            entry.bind("<Return>", lambda *_: add_resource())
+        self._populate_resources()
+
+    def _populate_resources(self):
+        view = self.resources_view
+        for child in view.winfo_children():
+            child.destroy()
+        path = ("recursos",)
+        for idx in range(len(self.sheet["recursos"])):
+            base = path + (idx,)
+            row = ctk.CTkFrame(view, fg_color=PANEL_DARK, corner_radius=6)
+            row.pack(fill=tk.X, pady=2)
+            line = ctk.CTkFrame(row, fg_color="transparent")
+            line.pack(fill=tk.X)
+            small_button(line, "X", lambda i=idx: self._remove(path, i, self._populate_resources), width=20,
+                         danger=True, height=20).pack(side=tk.RIGHT, padx=(2, 6))
+            self._option(line, base + ("recupera",), list(RECUPERA_LABELS.values()), width=64, kind="recupera",
+                         parse=lambda label: RECUPERA_VALUES[label]).pack(side=tk.RIGHT, padx=2)
+            small_button(line, "+", lambda i=idx: self._resource_step(i, 1), width=20, height=20).pack(
+                side=tk.RIGHT, padx=1)
+            self._field(line, base + ("max",), kind="int", width=26, height=20, size=10, justify="center",
+                        transparent=True, clamp=lambda v: max(0, v)).pack(side=tk.RIGHT)
+            ctk.CTkLabel(line, text="/", text_color=TEXT_MUTED, width=6).pack(side=tk.RIGHT)
+            self._field(line, base + ("atual",), kind="int", width=26, height=20, size=11, bold=True,
+                        justify="center", clamp=lambda v, i=idx: max(0, min(v, self.sheet["recursos"][i]["max"]))
+                        ).pack(side=tk.RIGHT)
+            small_button(line, "−", lambda i=idx: self._resource_step(i, -1), width=20, height=20).pack(
+                side=tk.RIGHT, padx=1)
+            self._field(line, base + ("nome",), width=80, transparent=True, bold=True, size=11,
+                        text_color=self.color).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2, pady=2)
+            self._textbox(row, base + ("detalhes",), auto_height=True, text_color=TEXT_DIM,
+                          placeholder="O que faz...").pack(fill=tk.X, padx=4, pady=(0, 4))
+
+    def _resource_step(self, idx, delta):
+        r = self.sheet["recursos"][idx]
+        value = max(0, min(r["atual"] + delta, r["max"]))
+        if value != r["atual"]:
+            r["atual"] = value
+            self._changed()
+
+    def _short_rest(self):
+        dnd.descanso_curto(self.sheet)
+        self._changed()
+
+    def _long_rest(self):
+        if not messagebox.askyesno("Descanso longo", "Recuperar todos os PV, metade dos dados de vida, os espaços "
+                                   "de magia e os recursos?", parent=self.winfo_toplevel()):
+            return
+        if not dnd.descanso_longo(self.sheet):
+            messagebox.showinfo("Descanso longo", "Com 0 PV não dá para descansar: é preciso ter pelo menos 1 PV "
+                                "no início do descanso (p. 186).", parent=self.winfo_toplevel())
+            return
+        self._changed()
 
     # ----------------------------------------------------------------- abas
     def _build_tabs(self, parent, active_tab):
@@ -314,7 +495,7 @@ class SheetView(BaseSheetView):
                      justify=tk.LEFT).pack(anchor=tk.W, pady=(4, 0))
 
     # Magias (p. 201-205)
-    SPELL_COLS = [(160, True), (300, True)]
+    SPELL_COLS = [(160, True), (56, False), (260, True)]
 
     def _build_spells(self, view):
         top = ctk.CTkFrame(view, fg_color=PANEL_DARK, corner_radius=6)
@@ -366,17 +547,39 @@ class SheetView(BaseSheetView):
         self._populate_spell_list()
 
     def _populate_spell_list(self):
+        """Magias em ordem de nível (truques primeiro). Mudar o nível reordena a lista."""
         view = self.spell_list_view
         for child in view.winfo_children():
             child.destroy()
-        keys, path = ("nome", "descricao"), ("magias", "lista")
-        scroll = self._list_section(
-            view, self.SPELL_COLS, ("Magia ou truque", "Nível, tempo, alcance, efeito..."),
-            lambda es: self._append(path, {k: e.get().strip() for k, e in zip(keys, es)}, es,
-                                    self._populate_spell_list))
-        self._list_rows(scroll, path, self.sheet["magias"]["lista"], self.SPELL_COLS, keys,
-                        lambda i: self._remove(path, i, self._populate_spell_list), wrap_key="descricao",
-                        placeholder="Nível, tempo de conjuração, alcance, efeito...")
+        path = ("magias", "lista")
+
+        def add(entries):
+            nome, nivel, descricao = (e.get().strip() for e in entries)
+            nivel = 0 if nivel.lower().startswith("t") else max(0, min(to_int(nivel, 0), 9))
+            self._append(path, {"nome": nome, "nivel": nivel, "descricao": descricao}, entries,
+                         self._populate_spell_list)
+
+        scroll = self._list_section(view, self.SPELL_COLS, ("Magia ou truque", "Nível", "Tempo, alcance, efeito..."),
+                                    add)
+        lista = self.sheet["magias"]["lista"]
+        for idx in sorted(range(len(lista)), key=lambda i: (lista[i]["nivel"], lista[i]["nome"].lower())):
+            base = path + (idx,)
+            row = ctk.CTkFrame(scroll, fg_color=PANEL)
+            row.pack(fill=tk.X, pady=3, padx=4)
+            line = ctk.CTkFrame(row, fg_color="transparent")
+            line.pack(fill=tk.X)
+            small_button(line, "X", lambda i=idx: self._remove(path, i, self._populate_spell_list), width=24,
+                         danger=True, height=20).pack(side=tk.RIGHT, padx=8)
+            menu = self._option(line, base + ("nivel",), NIVEIS_MAGIA, width=78, kind="nivel_magia",
+                                parse=NIVEIS_MAGIA.index)
+            menu.configure(command=lambda label, b=base: (self._commit(b + ("nivel",), NIVEIS_MAGIA.index(label)),
+                                                          self.after_idle(self._populate_spell_list)))
+            menu.pack(side=tk.LEFT, padx=(6, 3), pady=3)
+            self._field(line, base + ("nome",), width=120, transparent=True, bold=True, size=12,
+                        text_color=self.color).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=3)
+            self._textbox(row, base + ("descricao",), auto_height=True, text_color=TEXT_DIM,
+                          placeholder="Tempo de conjuração, alcance, componentes, duração, efeito...").pack(
+                fill=tk.X, padx=6, pady=(0, 6))
 
     # Características, idiomas e proficiências
     FEATURE_COLS = [(160, True), (300, True)]

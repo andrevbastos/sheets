@@ -148,9 +148,13 @@ class BaseSheetView(ctk.CTkFrame):
             return
         state = getattr(event, "state", 0)
         variant = "mais" if state & self.SHIFT else "menos" if state & self.CONTROL else None
+        req = dict(req)
+        after = req.pop("_on_roll", None)  # ação da ficha depois de rolar (ex.: descontar um dado de vida)
         if variant and req.get("sides") == 20 and req.get("qty", 1) == 1:
             req = self._roll_variant(req, variant)
         self.on_roll(req)
+        if after:
+            after()
 
     @staticmethod
     def _roll_variant(req, variant):
@@ -168,7 +172,18 @@ class BaseSheetView(ctk.CTkFrame):
             if str(button.cget("state")) != "disabled":
                 self._roll(make_request(), event)
 
-        button.bind("<Button-1>", click)
+        def bind_parts():
+            # O CTkButton é um canvas + rótulos de texto e de ícone, e só cria o rótulo quando o texto/ícone
+            # aparece. button.bind() liga só nas partes que já existem: um botão criado sem texto ficava com o
+            # número ("+5") surdo ao clique. Liga em cada parte nova, uma vez só.
+            for part in (button._canvas, button._text_label, button._image_label):
+                if part is not None and not getattr(part, "_roll_bound", False):
+                    part.bind("<Button-1>", click, add="+")
+                    part._roll_bound = True
+
+        bind_parts()
+        button.bind("<Configure>", lambda _e: bind_parts())  # texto/ícone novo recria o rótulo e redimensiona
+        button._bind_roll_parts = bind_parts
         return button
 
     def _bonus_button(self, parent, make_request, text_fn, color_fn=lambda: TEXT, width=56, size=12):
@@ -182,6 +197,7 @@ class BaseSheetView(ctk.CTkFrame):
         def show():
             color = color_fn()
             update(button, text=text_fn(), text_color=color, text_color_disabled=color)
+            button._bind_roll_parts()  # o rótulo do número nasce aqui, no primeiro texto
         self._computed(show)
         return button
 

@@ -52,6 +52,16 @@ CONJURACAO_POR_CLASSE = {
 
 NIVEL_MAX = 20
 
+# Dado de vida de cada classe ("Dado de Vida: 1dX por nível de ...", capítulo 3)
+DADOS_VIDA = ["d6", "d8", "d10", "d12"]
+DADO_VIDA_POR_CLASSE = {
+    "barbaro": "d12",
+    "guerreiro": "d10", "paladino": "d10", "patrulheiro": "d10", "guardiao": "d10",
+    "artifice": "d8", "bardo": "d8", "bruxo": "d8", "clerigo": "d8", "druida": "d8", "ladino": "d8", "monge": "d8",
+    "feiticeiro": "d6", "mago": "d6",
+}
+RECUPERA = ["", "curto", "longo"]  # quando o recurso volta ao máximo (vazio = só à mão)
+
 
 def _plain(text) -> str:
     text = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode()
@@ -191,6 +201,79 @@ def dano_request(sheet, text, label="Dano"):
     return {**req, "label": label} if req else None
 
 
+# ------------------------------------------------------------------ vida, morte e descanso
+def dado_vida(sheet):
+    """Dado de vida escolhido ou, se vazio, o da classe (o primeiro que aparecer no texto da classe)."""
+    escolhido = sheet["combate"]["dados_vida"]["dado"]
+    if escolhido in DADOS_VIDA:
+        return escolhido
+    for palavra in re.findall(r"[a-z]+", _plain(sheet.get("classe"))):
+        if palavra in DADO_VIDA_POR_CLASSE:
+            return DADO_VIDA_POR_CLASSE[palavra]
+    return None
+
+
+def dado_vida_request(sheet):
+    """Gastar um dado de vida (descanso curto, p. 186): dado + modificador de Constituição."""
+    dado = dado_vida(sheet)
+    if dado is None or sheet["combate"]["dados_vida"]["restantes"] <= 0:
+        return None
+    return {"sides": int(dado[1:]), "qty": 1, "mode": "normal", "extra": 0, "bonus": mod(sheet, "constituicao"),
+            "label": "Dado de vida"}
+
+
+def morte_request(sheet):
+    """Teste contra a morte (p. 197): d20 puro; 10 ou mais é sucesso, 1 conta duas falhas, 20 volta com 1 PV."""
+    return {"sides": 20, "qty": 1, "mode": "normal", "extra": 0, "bonus": 0, "label": "Teste contra a morte"}
+
+
+def _zera_morte(combate):
+    combate["morte"] = {"sucessos": 0, "falhas": 0}
+
+
+def sofrer_dano(sheet, valor: int):
+    """Dano tira primeiro os PV temporários (p. 198). Com 0 PV, cada dano é uma falha contra a morte (p. 197)."""
+    c = sheet["combate"]
+    if c["hp_atual"] == 0 and c["hp_max"] > 0:
+        c["morte"]["falhas"] = min(3, c["morte"]["falhas"] + 1)
+        return
+    absorvido = min(c["hp_temp"], valor)
+    c["hp_temp"] -= absorvido
+    c["hp_atual"] = max(0, c["hp_atual"] - (valor - absorvido))
+
+
+def curar(sheet, valor: int):
+    """Cura não devolve PV temporários; recuperar qualquer PV zera os testes contra a morte (p. 197-198)."""
+    c = sheet["combate"]
+    c["hp_atual"] = min(c["hp_max"], c["hp_atual"] + valor)
+    if c["hp_atual"] > 0:
+        _zera_morte(c)
+
+
+def descanso_curto(sheet):
+    """Recursos que voltam no descanso curto ficam cheios. Os dados de vida são gastos à mão (p. 186)."""
+    for r in sheet["recursos"]:
+        if r["recupera"] == "curto":
+            r["atual"] = r["max"]
+
+
+def descanso_longo(sheet):
+    """Descanso longo (p. 186): todos os PV, metade dos dados de vida (mínimo 1), espaços de magia e recursos."""
+    c = sheet["combate"]
+    if c["hp_atual"] == 0 and c["hp_max"] > 0:
+        return False  # precisa de pelo menos 1 PV no início do descanso
+    c["hp_atual"], c["hp_temp"] = c["hp_max"], 0
+    _zera_morte(c)
+    dv = c["dados_vida"]
+    dv["restantes"] = min(sheet["nivel"], dv["restantes"] + max(1, sheet["nivel"] // 2))
+    for slot in sheet["magias"]["slots"].values():
+        slot["atual"] = slot["max"]
+    for r in sheet["recursos"]:
+        if r["recupera"] in ("curto", "longo"):
+            r["atual"] = r["max"]
+    return True
+
+
 def apply_rules(sheet: dict) -> dict:
     """Grava na ficha (no lugar) tudo o que as regras definem. Devolve a própria ficha."""
     sheet["nivel"] = max(1, min(sheet.get("nivel", 1), NIVEL_MAX))
@@ -207,6 +290,15 @@ def apply_rules(sheet: dict) -> dict:
     combate["iniciativa"] = iniciativa(sheet)
     combate["percepcao_passiva"] = percepcao_passiva(sheet)
     combate["hp_atual"] = max(0, min(combate["hp_atual"], combate["hp_max"]))
+    combate["hp_temp"] = max(0, combate["hp_temp"])
+    dv = combate["dados_vida"]
+    dv["dado"] = dv["dado"] or dado_vida(sheet) or ""  # vazio: pega o da classe, se der
+    dv["restantes"] = max(0, min(dv["restantes"], sheet["nivel"]))
+    for key in ("sucessos", "falhas"):
+        combate["morte"][key] = max(0, min(combate["morte"][key], 3))
+    for r in sheet["recursos"]:
+        r["max"] = max(0, r["max"])
+        r["atual"] = max(0, min(r["atual"], r["max"]))
     magias = sheet["magias"]
     if atributo_conjuracao(sheet) is not None:  # sem atributo, CD e bônus ficam como digitados
         magias["cd_salvamento"], magias["bonus_ataque"] = cd_magia(sheet), ataque_magia(sheet)
@@ -291,9 +383,16 @@ def normalize(sheet: dict, to_int, to_bool, clean_list) -> dict:
     hp_max = max(0, to_int(c.get("hp_max"), 0))
     ini_outros = (to_int(c.get("iniciativa_outros"), 0) if "iniciativa_outros" in c
                   else to_int(c.get("iniciativa"), mods["destreza"]) - mods["destreza"])
+    dv = c.get("dados_vida") if isinstance(c.get("dados_vida"), dict) else {}
+    morte = c.get("morte") if isinstance(c.get("morte"), dict) else {}
     s["combate"] = {"hp_max": hp_max, "hp_atual": max(0, to_int(c.get("hp_atual"), hp_max)),
+                    "hp_temp": max(0, to_int(c.get("hp_temp"), 0)),
                     "ca": to_int(c.get("ca"), 10), "iniciativa_outros": ini_outros,
-                    "deslocamento": str(c.get("deslocamento") or "9m")}
+                    "deslocamento": str(c.get("deslocamento") or "9m"),
+                    "dados_vida": {"dado": dv.get("dado") if dv.get("dado") in DADOS_VIDA else "",
+                                   "restantes": to_int(dv.get("restantes"), nivel)},
+                    "morte": {"sucessos": to_int(morte.get("sucessos"), 0), "falhas": to_int(morte.get("falhas"), 0)}}
+    s["inspiracao"] = to_bool(s.get("inspiracao"))
 
     magias = s.get("magias") if isinstance(s.get("magias"), dict) else {}
     atributo = magias.get("atributo") if magias.get("atributo") in mods else ""
@@ -304,7 +403,8 @@ def normalize(sheet: dict, to_int, to_bool, clean_list) -> dict:
         "cd_salvamento": to_int(magias.get("cd_salvamento"), 8),
         "bonus_ataque": to_int(magias.get("bonus_ataque"), 0),
         "slots": {},
-        "lista": [{"nome": str(m.get("nome") or ""), "descricao": str(m.get("descricao") or "")}
+        "lista": [{"nome": str(m.get("nome") or ""), "nivel": max(0, min(to_int(m.get("nivel"), 0), 9)),
+                   "descricao": str(m.get("descricao") or "")}
                   for m in clean_list(magias.get("lista")) if isinstance(m, dict)],
     }
     for lvl in range(1, 10):
@@ -317,7 +417,6 @@ def normalize(sheet: dict, to_int, to_bool, clean_list) -> dict:
                             for f in clean_list(s.get("caracteristicas")) if isinstance(f, dict)]
     s["idiomas"] = _lista_para_texto(s.get("idiomas"))
     s["proficiencias"] = _lista_para_texto(s.get("proficiencias"))
-    s["recursos"] = clean_list(s.get("recursos"))
     s["inventario"] = [str(item) for item in clean_list(s.get("inventario"))]
 
     # Fichas antigas usavam "custom" no lugar de "extra"
@@ -326,6 +425,31 @@ def normalize(sheet: dict, to_int, to_bool, clean_list) -> dict:
         extra = s.pop("custom", {}) if isinstance(s.get("custom"), dict) else {}
     else:
         s.pop("custom", None)
+
+    # Recursos: os antigos "recursos de classe" da aba Extra viram recursos de verdade; o "Dado de Vida (d10)"
+    # que algumas fichas guardavam ali vira os dados de vida do combate.
+    antigos = list(clean_list(s.get("recursos")))
+    for item in clean_list(extra.pop("recursos de classe", [])):
+        if not isinstance(item, dict):
+            continue
+        dado = re.match(r"\s*dados? de vida\s*\(?\s*1?(d\d+)", str(item.get("nome") or ""), re.I)
+        if dado and dado.group(1) in DADOS_VIDA:
+            s["combate"]["dados_vida"] = {"dado": dado.group(1),
+                                          "restantes": to_int(item.get("valor_atual"), nivel)}
+            continue
+        antigos.append({"nome": item.get("nome"), "atual": item.get("valor_atual"), "max": item.get("valor_maximo"),
+                        "detalhes": item.get("detalhes")})
+    def recupera(r):
+        if "recupera" in r:
+            return r["recupera"] if r["recupera"] in RECUPERA else ""
+        texto = _plain(r.get("detalhes"))  # recurso antigo: o texto costuma dizer quando volta
+        return "curto" if "descanso curto" in texto else "longo" if "descanso longo" in texto else ""
+
+    s["recursos"] = [
+        {"nome": str(r.get("nome") or ""), "atual": to_int(r.get("atual"), 0), "max": to_int(r.get("max"), 0),
+         "recupera": recupera(r), "detalhes": str(r.get("detalhes") or "")}
+        for r in antigos if isinstance(r, dict)
+    ]
     for key, category in list(extra.items()):
         if isinstance(category, list):
             extra[key] = clean_list(category)
