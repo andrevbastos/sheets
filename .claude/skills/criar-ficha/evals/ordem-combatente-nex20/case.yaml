@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: ordem-combatente-nex20
+expected_outcome: |
+  Uma ficha de Ordem válida para o app: combatente militar NEX 20% com atributos somando 10 (um aumento de atributo em NEX 20%), trilha operacoes, habilidades de NEX 5-20% (Ataque Especial, Iniciativa Aprimorada, um poder de combatente em 15%), perícias treinadas no número certo, equipamento de recruta e ataques anotados.

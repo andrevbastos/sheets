@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: dnd-halfling-ladino
+expected_outcome: |
+  Uma ficha de D&D 5e válida para o app: halfling pés-leves ladino 1 com compra de 27 pontos correta mais DES +2 e CAR +1, 8 + CON de PV, resistências DES e INT, 4 perícias de ladino + Enganação e Furtividade do criminoso (repetida trocada), Especialização em duas perícias, Ataque Furtivo e Gíria de Ladrão, equipamento inicial e CA coerente.

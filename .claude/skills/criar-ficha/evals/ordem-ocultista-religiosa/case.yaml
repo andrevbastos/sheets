@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: ordem-ocultista-religiosa
+expected_outcome: |
+  Uma ficha de Ordem válida para o app: ocultista religiosa de NEX 5% com atributos somando 9 e nenhum acima de 3, perícias treinadas no número certo (2 da origem + Ocultismo, Vontade e 3 + INT), Escolhido pelo Outro Lado e três rituais de 1º círculo do livro, equipamento de recruta, e uma explicação das escolhas.
