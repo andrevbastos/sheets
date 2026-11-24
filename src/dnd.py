@@ -85,6 +85,8 @@ def bonus_proficiencia(nivel: int) -> int:
 
 
 def prof(sheet) -> int:
+    if is_monstro(sheet):
+        return proficiencia_nd(sheet.get("nd"))
     return bonus_proficiencia(sheet.get("nivel", 1))
 
 
@@ -235,7 +237,8 @@ def sofrer_dano(sheet, valor: int):
     """Dano tira primeiro os PV temporários (p. 198). Com 0 PV, cada dano é uma falha contra a morte (p. 197)."""
     c = sheet["combate"]
     if c["hp_atual"] == 0 and c["hp_max"] > 0:
-        c["morte"]["falhas"] = min(3, c["morte"]["falhas"] + 1)
+        if "morte" in c:  # monstros não fazem testes contra a morte
+            c["morte"]["falhas"] = min(3, c["morte"]["falhas"] + 1)
         return
     absorvido = min(c["hp_temp"], valor)
     c["hp_temp"] -= absorvido
@@ -246,7 +249,7 @@ def curar(sheet, valor: int):
     """Cura não devolve PV temporários; recuperar qualquer PV zera os testes contra a morte (p. 197-198)."""
     c = sheet["combate"]
     c["hp_atual"] = min(c["hp_max"], c["hp_atual"] + valor)
-    if c["hp_atual"] > 0:
+    if c["hp_atual"] > 0 and "morte" in c:
         _zera_morte(c)
 
 
@@ -276,6 +279,8 @@ def descanso_longo(sheet):
 
 def apply_rules(sheet: dict) -> dict:
     """Grava na ficha (no lugar) tudo o que as regras definem. Devolve a própria ficha."""
+    if is_monstro(sheet):
+        return apply_rules_monstro(sheet)
     sheet["nivel"] = max(1, min(sheet.get("nivel", 1), NIVEL_MAX))
     for attr, *_ in ATRIBUTOS:
         sheet["atributos"][attr]["mod"] = mod(sheet, attr)
@@ -338,6 +343,8 @@ def _lista_para_texto(value) -> str:
 
 
 def normalize(sheet: dict, to_int, to_bool, clean_list) -> dict:
+    if is_monstro(sheet):
+        return normalize_monstro(sheet, to_int, to_bool, clean_list)
     s = copy.deepcopy(sheet) if isinstance(sheet, dict) else {}
     s["sistema"] = SYSTEM
     s["nome"] = str(s.get("nome") or "Sem Nome")
@@ -459,3 +466,129 @@ def normalize(sheet: dict, to_int, to_bool, clean_list) -> dict:
                 category["maximo"] = max(0, to_int(category.get("maximo"), 3))
     s["extra"] = extra
     return apply_rules(s)
+
+
+# ------------------------------------------------------------------ monstros (só do mestre)
+# Números das tabelas de Nível de Desafio dos livros de 5e: XP por ND e bônus de proficiência por ND
+# (+2 até o ND 4 e +1 a cada 4 NDs depois). O resto usa as mesmas regras dos personagens: modificadores,
+# testes de resistência com proficiência, iniciativa = Destreza e ataques escritos como "FOR" ou "DES +1".
+TIPO_MONSTRO = "monstro"
+TAMANHOS = ["Miúdo", "Pequeno", "Médio", "Grande", "Enorme", "Imenso"]
+NDS = ["0", "1/8", "1/4", "1/2"] + [str(n) for n in range(1, 31)]
+XP_POR_ND = dict(zip(NDS, [
+    10, 25, 50, 100, 200, 450, 700, 1100, 1800, 2300, 2900, 3900, 5000, 5900, 7200, 8400, 10000, 11500, 13000,
+    15000, 18000, 20000, 22000, 25000, 33000, 41000, 50000, 62000, 75000, 90000, 105000, 120000, 135000, 155000]))
+TIPOS_ACAO = ["Ação", "Ação bônus", "Reação", "Lendária"]
+_PERICIA_POR_NOME = {_plain(nome): key for key, nome, _ in PERICIAS}
+
+
+def is_monstro(sheet) -> bool:
+    return isinstance(sheet, dict) and sheet.get("tipo") == TIPO_MONSTRO
+
+
+def _nd_numero(nd) -> float:
+    a, _, b = str(nd).partition("/")
+    return int(a) / int(b) if b else float(a)
+
+
+def proficiencia_nd(nd) -> int:
+    """Bônus de proficiência pelo ND: +2 do 0 ao 4, +3 do 5 ao 8, ..., +9 no 29 e 30."""
+    valor = _nd_numero(nd if nd in NDS else "0")
+    return 2 if valor < 5 else 2 + (int(valor) - 1) // 4
+
+
+def xp_nd(nd) -> int:
+    return XP_POR_ND.get(nd, 0)
+
+
+def pv_media(formula):
+    """PV médio de uma fórmula como '2d6+2' (média de cada dado arredondada para baixo, como nos livros)."""
+    from src import dice  # tardio: dice não precisa das regras de D&D
+    req = dice.parse_dice(str(formula or ""))
+    if not req:
+        return None
+    return max(1, req["qty"] * (req["sides"] + 1) // 2 + req.get("bonus", 0))
+
+
+def pericias_monstro(sheet):
+    """Perícias escritas na ficha ('Furtividade +6, Percepção') -> [(nome, bônus)].
+
+    Sem número, uma perícia conhecida vale atributo + proficiência (como um personagem proficiente)."""
+    out = []
+    for parte in re.split(r"[,;\n]", sheet.get("pericias", "")):
+        numero = _NUM_RE.search(parte)
+        nome = _NUM_RE.sub("", parte).strip(" .:")
+        if not nome:
+            continue
+        key = _PERICIA_POR_NOME.get(_plain(nome))
+        if numero:
+            out.append((nome, int(numero.group(2)) * (-1 if numero.group(1) in ("-", "−") else 1)))
+        elif key:
+            out.append((nome, mod(sheet, PERICIA_ATRIBUTO[key]) + prof(sheet)))
+    return out
+
+
+def percepcao_passiva_monstro(sheet) -> int:
+    """10 + Percepção, se escrita nas perícias; senão 10 + Sabedoria."""
+    for nome, bonus in pericias_monstro(sheet):
+        if _PERICIA_POR_NOME.get(_plain(nome)) == "percepcao":
+            return 10 + bonus
+    return 10 + mod(sheet, "sabedoria")
+
+
+def apply_rules_monstro(sheet: dict) -> dict:
+    for attr, *_ in ATRIBUTOS:
+        sheet["atributos"][attr]["mod"] = mod(sheet, attr)
+        sheet["resistencia"][attr]["bonus"] = bonus_resistencia(sheet, attr)
+    sheet["xp"] = xp_nd(sheet["nd"])
+    c = sheet["combate"]
+    c["proficiencia"] = prof(sheet)
+    c["iniciativa"] = iniciativa(sheet)
+    c["hp_atual"] = max(0, min(c["hp_atual"], c["hp_max"]))
+    c["hp_temp"] = max(0, c["hp_temp"])
+    leg = sheet["lendarias"]
+    leg["max"] = max(0, leg["max"])
+    leg["atual"] = max(0, min(leg["atual"], leg["max"]))
+    sheet["percepcao_passiva"] = percepcao_passiva_monstro(sheet)
+    return sheet
+
+
+def normalize_monstro(sheet: dict, to_int, to_bool, clean_list) -> dict:
+    s = copy.deepcopy(sheet)
+    s["sistema"], s["tipo"] = SYSTEM, TIPO_MONSTRO
+    s["nome"] = str(s.get("nome") or "Sem Nome")
+    cor = str(s.get("cor") or "").strip()
+    s["cor"] = cor if cor.startswith("#") and len(cor) in (4, 7) else "#a33b3b"
+    s["tamanho"] = next((t for t in TAMANHOS if _plain(t) == _plain(s.get("tamanho"))), "Médio")
+    nd = str(s.get("nd") or "").replace(" ", "")
+    s["nd"] = nd if nd in NDS else "1"
+    for key in ("criatura", "tendencia", "pericias", "vulnerabilidades_dano", "resistencias_dano", "imunidades_dano",
+                "imunidades_condicao", "sentidos", "idiomas", "descricao"):
+        s[key] = str(s.get(key) or "")
+
+    attrs = s.get("atributos") if isinstance(s.get("atributos"), dict) else {}
+    res = s.get("resistencia") if isinstance(s.get("resistencia"), dict) else {}
+    s["atributos"], s["resistencia"] = {}, {}
+    for attr, *_ in ATRIBUTOS:
+        a = attrs.get(attr) if isinstance(attrs.get(attr), dict) else {"valor": attrs.get(attr)}
+        s["atributos"][attr] = {"valor": max(1, min(to_int(a.get("valor"), 10), 30))}
+        r = res.get(attr) if isinstance(res.get(attr), dict) else {}
+        s["resistencia"][attr] = {"proficiente": to_bool(r.get("proficiente")), "outros": to_int(r.get("outros"), 0)}
+
+    c = s.get("combate") if isinstance(s.get("combate"), dict) else {}
+    hp_max = max(0, to_int(c.get("hp_max"), 0))
+    s["combate"] = {"ca": to_int(c.get("ca"), 10), "ca_descricao": str(c.get("ca_descricao") or ""),
+                    "hp_max": hp_max, "hp_atual": max(0, to_int(c.get("hp_atual"), hp_max)),
+                    "hp_temp": max(0, to_int(c.get("hp_temp"), 0)), "formula_pv": str(c.get("formula_pv") or ""),
+                    "iniciativa_outros": to_int(c.get("iniciativa_outros"), 0),
+                    "deslocamento": str(c.get("deslocamento") or "9 m")}
+    s["habilidades"] = [{"nome": str(h.get("nome") or ""), "descricao": str(h.get("descricao") or "")}
+                        for h in clean_list(s.get("habilidades")) if isinstance(h, dict)]
+    s["acoes"] = [{"tipo": a.get("tipo") if a.get("tipo") in TIPOS_ACAO else "Ação",
+                   "nome": str(a.get("nome") or ""), "ataque": str(a.get("ataque") or ""),
+                   "dano": str(a.get("dano") or ""), "descricao": str(a.get("descricao") or "")}
+                  for a in clean_list(s.get("acoes")) if isinstance(a, dict)]
+    leg = s.get("lendarias") if isinstance(s.get("lendarias"), dict) else {}
+    maximo = max(0, to_int(leg.get("max"), 0))
+    s["lendarias"] = {"max": maximo, "atual": to_int(leg.get("atual"), maximo)}
+    return apply_rules_monstro(s)

@@ -12,16 +12,15 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from src import ordem
 from src.net.protocol import DEFAULT_PORT
 from src.net.server import DM_NAME, DNDServer
 from src.ui.dice_window import DiceWindow
 from src.ui.initiative_window import InitiativeWindow
-from src.sheet_io import SYSTEMS, create_new_sheet, create_new_threat, load_sheet, save_sheet
+from src.sheet_io import SHEET_SYSTEM_DND5E, SYSTEMS, create_new_sheet, create_new_threat, load_sheet, save_sheet
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, PANEL_DARK, TEXT_DIM, TEXT_FAINT,
                            TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, allow_ctrl_c, bring_to_front,
                            install_click_defocus, update, update_bar)
-from src.ui.systems import iniciativa_request, make_sheet_view, resources
+from src.ui.systems import iniciativa_request, is_dm_only, make_sheet_view, resources
 
 PREFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dm-prefs.json")
 
@@ -161,8 +160,7 @@ class DMApp:
         buttons = ctk.CTkFrame(sidebar, fg_color="transparent")
         buttons.pack(fill=tk.X, padx=10)
         sheet_buttons = [("Abrir ficha", self.open_local_sheet), ("Nova ficha", self.create_sheet)]
-        if self.system == ordem.SYSTEM:
-            sheet_buttons.append(("Nova ameaça", self.create_threat))
+        sheet_buttons.append((self.threat_word.capitalize(), self.create_threat))
         for text, command in sheet_buttons:
             ctk.CTkButton(buttons, text=text, fg_color=BUTTON, hover_color=BUTTON_HOVER, height=28, width=10,
                           command=command).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=3)
@@ -214,13 +212,13 @@ class DMApp:
     def _ordered_entries(self):
         """Jogadores, depois fichas locais de agentes, depois ameaças."""
         return sorted(self.entries.values(),
-                      key=lambda e: (not e.is_player, ordem.is_ameaca(e.sheet), e.label.lower()))
+                      key=lambda e: (not e.is_player, is_dm_only(e.sheet), e.label.lower()))
 
     def _card_layout(self, entry: Entry):
         """O que muda a forma do cartão (se isso não mudou, só os valores são atualizados)."""
         sheet = entry.sheet
         return (entry.key, entry.label, entry.is_player, entry.online,
-                sheet.get("cor") if sheet else None, ordem.is_ameaca(sheet),
+                sheet.get("cor") if sheet else None, is_dm_only(sheet),
                 tuple(r[0] for r in resources(sheet)) if sheet else ())
 
     def _update_card_values(self, entry: Entry):
@@ -282,7 +280,7 @@ class DMApp:
                 widgets += [row, lbl_sigla, lbl_val, bar]
                 self._card_values.setdefault(entry.key, []).append((lbl_val, bar, res_color))
             status = "" if entry.online else ("desconectado" if entry.is_player else
-                                              "ameaça" if ordem.is_ameaca(entry.sheet) else "ficha local")
+                                              self.threat_word.split()[-1] if is_dm_only(entry.sheet) else "ficha local")
         else:
             status = "Sem ficha (clique para escolher)"
         if status:
@@ -344,9 +342,10 @@ class DMApp:
         sheet = self._load(path)
         if sheet is None:
             return False
-        if ordem.is_ameaca(sheet):
-            messagebox.showerror("Ficha de ameaça", f"{os.path.basename(path)} é uma ficha de ameaça. "
-                                                    "Ameaças são só do mestre: abra com Abrir ficha.")
+        if is_dm_only(sheet):
+            noun = self.threat_word.split()[-1]
+            messagebox.showerror(f"Ficha de {noun}", f"{os.path.basename(path)} é uma ficha de {noun}, que é só "
+                                                     "do mestre: abra com Abrir ficha.")
             return False
         entry.filepath, entry.sheet = path, sheet
         self._drop_view(entry.key)
@@ -391,21 +390,27 @@ class DMApp:
             return
         self._add_local(path)
 
+    @property
+    def threat_word(self):
+        return "novo monstro" if self.system == SHEET_SYSTEM_DND5E else "nova ameaça"
+
     def create_threat(self):
-        dialog = ctk.CTkInputDialog(title="Nova ameaça", text="Nome da ameaça:")
+        noun = self.threat_word.split()[-1]
+        dialog = ctk.CTkInputDialog(title=self.threat_word.capitalize(), text=f"Nome do {noun}:"
+                                    if noun == "monstro" else f"Nome da {noun}:")
         name = (dialog.get_input() or "").strip()
         if not name:
             return
         npcs = os.path.join(self._sheets_dir(), "npcs")
-        path = filedialog.asksaveasfilename(title="Salvar ameaça nova", defaultextension=".json",
+        path = filedialog.asksaveasfilename(title=f"Salvar {noun}", defaultextension=".json",
                                             initialdir=npcs if os.path.isdir(npcs) else self._sheets_dir(),
                                             initialfile=f"{name}.json", filetypes=[("Fichas JSON", "*.json")])
         if not path:
             return
         try:
-            create_new_threat(name, path)
+            create_new_threat(name, path, self.system)
         except OSError as exc:
-            messagebox.showerror("Erro", f"Não foi possível criar a ameaça:\n{exc}")
+            messagebox.showerror("Erro", f"Não foi possível criar a ficha:\n{exc}")
             return
         self._add_local(path)
 
@@ -474,7 +479,7 @@ class DMApp:
         self.initiative.show()
 
     def _initiative_entries(self):
-        return [(e.key, e.sheet.get("nome", e.label), e.sheet, ordem.is_ameaca(e.sheet))
+        return [(e.key, e.sheet.get("nome", e.label), e.sheet, is_dm_only(e.sheet))
                 for e in self._ordered_entries() if e.sheet]
 
     def _initiative_roll(self, req, private):

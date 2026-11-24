@@ -60,9 +60,12 @@ def create_new_sheet(character_name: str, template_path: str, output_path: str) 
     return sheet
 
 
-def create_new_threat(name: str, output_path: str) -> dict:
-    """Cria uma ficha de ameaça de Ordem Paranormal em branco (só do mestre)."""
-    sheet = normalize_sheet({"sistema": ordem.SYSTEM, "tipo": ordem.TIPO_AMEACA, "nome": name})
+THREAT_TYPES = {ordem.SYSTEM: ordem.TIPO_AMEACA, dnd.SYSTEM: dnd.TIPO_MONSTRO}  # ficha só do mestre
+
+
+def create_new_threat(name: str, output_path: str, system: str = ordem.SYSTEM) -> dict:
+    """Cria em branco a ficha só do mestre do sistema: ameaça (Ordem Paranormal) ou monstro (D&D 5e)."""
+    sheet = normalize_sheet({"sistema": system, "tipo": THREAT_TYPES[system], "nome": name})
     save_sheet(sheet, output_path)
     return sheet
 

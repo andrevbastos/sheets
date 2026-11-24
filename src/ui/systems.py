@@ -5,7 +5,7 @@ SheetView(master, sheet, on_change) que tenha set_sheet(sheet), registrar aqui,
 e adicionar o template em src/sheet_io.SYSTEMS.
 """
 from src import dnd, ordem
-from src.ui import ameaca_sheet, dnd5e_sheet, ordem_sheet
+from src.ui import ameaca_sheet, dnd5e_sheet, monstro_sheet, ordem_sheet
 
 SYSTEMS = {
     dnd5e_sheet.SYSTEM: dnd5e_sheet.SheetView,
@@ -18,10 +18,17 @@ def make_sheet_view(master, sheet: dict, on_change=None, on_roll=None):
     system = sheet.get("sistema", dnd5e_sheet.SYSTEM)
     if ordem.is_ameaca(sheet):
         return ameaca_sheet.SheetView(master, sheet, on_change=on_change, on_roll=on_roll)
+    if dnd.is_monstro(sheet):
+        return monstro_sheet.SheetView(master, sheet, on_change=on_change, on_roll=on_roll)
     view_class = SYSTEMS.get(system)
     if view_class is None:
         raise ValueError(f"Sistema de ficha desconhecido: {system!r}")
     return view_class(master, sheet, on_change=on_change, on_roll=on_roll)
+
+
+def is_dm_only(sheet) -> bool:
+    """Ficha só do mestre (ameaça de Ordem, monstro de D&D): não vai para jogadores."""
+    return ordem.is_ameaca(sheet) or dnd.is_monstro(sheet)
 
 
 def iniciativa_request(sheet: dict):

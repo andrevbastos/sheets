@@ -22,6 +22,7 @@ Sistemas suportados:
   - Rituais numa aba própria: elemento, círculo (o custo em PE sai da tabela da p. 119), execução, alcance, alvo, duração, resistência e dano. A DT de rituais fica no topo da aba.
   - **Rolar pela ficha:** o bônus de cada perícia é um botão, e cada ataque tem **Teste** e **Dano**. Shift+clique rola com +1d20 e Ctrl+clique com −1d20. O clique abre a janela de Dados (se estiver fechada) e rola, com o nome da perícia ou do ataque no histórico. No teste de ataque vale escrever `Luta`, `Luta +2`, `+5` ou o dado inteiro (`3d20+10`; na ficha do livro aparece como 3O+10).
 - **Ameaças (Ordem Paranormal, só do mestre):** ficha no formato do livro (p. 178-179). Tem VD, descritores, tamanho, Presença Perturbadora, PV com o limiar de machucado, Defesa, Percepção, Iniciativa, Fortitude, Reflexos e Vontade, resistências, vulnerabilidades, perícias, ações (padrão, movimento, completa, reação, livre) e habilidades. Os testes são escritos com o dado inteiro (`2d20+10`, `2d6+5 corte`; o 2O+10 do livro é convertido sozinho), e cada um tem botão de rolar. Ameaças não podem ser entregues a jogadores.
+- **Monstros (D&D 5e, só do mestre):** ficha no formato do bloco de estatísticas. O ND define o bônus de proficiência e o XP. Tem tamanho, tipo de criatura, tendência, CA com descrição, PV com fórmula (**Média** preenche os PV como nos livros), PV temporários, iniciativa, deslocamento, atributos com o teste de resistência embaixo de cada um (a bolinha soma a proficiência), perícias escritas (`Furtividade +6, Percepção`; sem número vale atributo + proficiência), sentidos, idiomas, vulnerabilidades, resistências, imunidades e Percepção passiva. As ações ficam em ordem de tipo (ação, ação bônus, reação, lendária), com ataque `+4` ou `DES` e dano `1d6+DES cortante`, e há um contador de ações lendárias. Monstros também não podem ser entregues a jogadores.
 
 ## Instalar
 
@@ -44,7 +45,7 @@ A barra lateral mostra o endereço que os jogadores devem digitar (ex.: `192.168
 
 - Quando um jogador conecta, ele aparece na lista. Clique nele para escolher o arquivo `.json` da ficha.
 - **Abrir ficha** abre um ou vários `.json` (Ctrl/Shift no explorador) para você ver e editar sem jogador.
-- **Nova ficha** cria uma ficha em branco do sistema da sessão. Em Ordem Paranormal, **Nova ameaça** cria uma ficha de ameaça (o explorador abre em `sheets/npcs`).
+- **Nova ficha** cria uma ficha em branco do sistema da sessão. **Nova ameaça** (Ordem Paranormal) ou **Novo monstro** (D&D 5e) cria a ficha só do mestre (o explorador abre em `sheets/npcs`).
 - **Iniciativa** abre uma janela com todas as fichas abertas na barra lateral. **Rolar todos** rola a iniciativa de todo mundo e ordena (empate: maior bônus; depois agentes antes de ameaças). **Próximo turno** avança e conta as rodadas. Dá para digitar o valor à mão, rolar uma ficha só e adicionar nomes avulsos (ex.: "Filhote 2"). A iniciativa dos agentes aparece para a mesa; a das ameaças é privada (dá para desmarcar).
 - Tudo o que o mestre ou o jogador edita é salvo na hora no arquivo da ficha, no PC do mestre.
 
@@ -87,6 +88,7 @@ src/ui/sheet_base.py      base das fichas editáveis (campos, recálculo, listas
 src/ui/dnd5e_sheet.py     tela da ficha de D&D 5e
 src/ui/ordem_sheet.py     tela da ficha de Ordem Paranormal
 src/ui/ameaca_sheet.py    tela da ficha de ameaça (Ordem Paranormal, só do mestre)
+src/ui/monstro_sheet.py   tela da ficha de monstro (D&D 5e, só do mestre)
 src/ui/initiative_window.py  janela de iniciativa do mestre
 src/ui/systems.py         escolhe a tela pelo campo "sistema" da ficha
 src/dice.py               rolagem de dados (vantagem/desvantagem, privada)
