@@ -103,6 +103,12 @@ class SheetView(ordem_sheet.SheetView):
         for delta in (-10, -5, -1, 1, 5, 10):
             small_button(buttons, f"+{delta}" if delta > 0 else str(delta),
                          lambda d=delta: self._adjust("pv", d)).pack(side=tk.LEFT, padx=3)
+        self._build_conditions(card)
+
+    def _effective_defense(self):
+        """Com condições (desprevenido, vulnerável...), a Defesa que vale aparece embaixo da digitada."""
+        menos, _ = ordem.penalidade_defesa(self.sheet)
+        return f"vale {ordem.defesa_ameaca(self.sheet)}" if menos else ""
 
     def _hurt_text(self):
         pv, limite = self.sheet["pv"], ordem.machucado(self.sheet)
@@ -116,12 +122,15 @@ class SheetView(ordem_sheet.SheetView):
         card = self._card(parent, None, fill=tk.X, pady=(0, 10))
         top = ctk.CTkFrame(card, fg_color="transparent")
         top.pack(fill=tk.X, padx=12, pady=(10, 4))
-        shield = ctk.CTkFrame(top, fg_color=PANEL_DARK, corner_radius=8, width=74, height=64)
+        shield = ctk.CTkFrame(top, fg_color=PANEL_DARK, corner_radius=8, width=74, height=78)
         shield.pack(side=tk.LEFT, padx=(0, 10))
         shield.pack_propagate(False)
         self._caption(shield, "DEFESA").pack(pady=(5, 0))
         self._field(shield, ("defesa",), kind="int", width=50, size=20, bold=True, justify="center",
                     transparent=True, height=30).pack()
+        effective = ctk.CTkLabel(shield, text="", font=ctk.CTkFont(size=9, weight="bold"), text_color=WARN, height=12)
+        effective.pack()
+        self._computed(lambda: update(effective, text=self._effective_defense()))
 
         grid = ctk.CTkFrame(top, fg_color="transparent")
         grid.pack(side=tk.LEFT, fill=tk.X, expand=True)

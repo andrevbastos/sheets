@@ -212,7 +212,9 @@ def recurso_calculado(sheet, key):
         inicial //= 2  # Traços do Outro Lado: começa com metade da Sanidade da classe
     bonus_attr = sheet["atributos"].get(attr, 0) if attr else 0
     niveis_extras = nex_nivel(sheet) - 1
-    return inicial + bonus_attr + niveis_extras * (por_nex + bonus_attr) + bonus_de_origem(sheet, key)
+    casca_grossa = nex_nivel(sheet) if key == "pv" and tem_habilidade(sheet, "tropa", 10) else 0  # p. 27
+    return (inicial + bonus_attr + niveis_extras * (por_nex + bonus_attr) + bonus_de_origem(sheet, key)
+            + casca_grossa)
 
 
 def dt_rituais(sheet) -> int:
@@ -223,6 +225,8 @@ def dt_rituais(sheet) -> int:
 def carga_maxima(sheet) -> int:
     """Espaços de itens (p. 63): 5 por ponto de Força; com Força 0, apenas 2."""
     forca = sheet["atributos"].get("for", 0)
+    if tem_habilidade(sheet, "tecnico", 10):  # Inventário Otimizado (p. 31): soma o Intelecto à Força
+        forca += sheet["atributos"].get("int", 0)
     return 5 * forca if forca > 0 else 2
 
 
@@ -270,7 +274,9 @@ def defesa_total(sheet) -> int:
     """Defesa (p. 46): 10 + AGI + equipamento + outros (+ origem); sobrecarregado sofre −5 (p. 63)."""
     d = sheet.get("defesa", {})
     total = (10 + sheet.get("atributos", {}).get("agi", 0) + d.get("equipamento", 0) + d.get("outros", 0)
-             + defesa_origem(sheet))
+             + defesa_origem(sheet) - penalidade_defesa(sheet)[0])  # condições (p. 310-311)
+    if tem_habilidade(sheet, "tropa", 99) and machucado_agente(sheet):  # Inquebrável (p. 27)
+        total += 5
     return total - 5 if sobrecarregado(sheet) else total
 
 
@@ -278,6 +284,8 @@ def bonus_pericia(sheet, key) -> int:
     """Grau de treino + outros; perícias de carga sofrem −5 quando sobrecarregado (p. 63)."""
     p = sheet.get("pericias", {}).get(key, {})
     total = p.get("treino", 0) + p.get("outros", 0)
+    if key == "iniciativa" and tem_habilidade(sheet, "operacoes", 10):  # Iniciativa Aprimorada (p. 27)
+        total += 5
     if key in PERICIAS_CARGA and sobrecarregado(sheet):
         total -= 5
     return total
@@ -352,28 +360,29 @@ def _pericia(key):
     return next(p for p in PERICIAS if p[0] == key)
 
 
-def pericia_request(sheet, key, label=None) -> dict:
-    """Teste de perícia do agente: dados do atributo + bônus (já com a penalidade de sobrecarga)."""
+def pericia_request(sheet, key, label=None, ataque=False) -> dict:
+    """Teste de perícia do agente: dados do atributo + bônus (já com sobrecarga e condições)."""
     _, nome, attr, *_ = _pericia(key)
-    return teste_request(sheet["atributos"].get(attr, 0), bonus_pericia(sheet, key), label or nome)
+    return _com_condicoes(sheet, sheet["atributos"].get(attr, 0), bonus_pericia(sheet, key), label or nome,
+                          key, ataque)
 
 
 def ataque_request(sheet, text, label=""):
     """Teste de ataque escrito à mão: '3d20+10', 'Luta', 'Luta +2' ou '+5'. None se não der para entender."""
     text = str(text or "")
     parsed = parse_teste(text)
-    if parsed:
-        return teste_request(*parsed, label)
     key = _pericia_no_texto(text)
+    if parsed:
+        return _com_condicoes(sheet, *parsed, label, key, ataque=True)
     if is_ameaca(sheet):
-        return ameaca_pericia_request(sheet, key, label) if key else None
+        return ameaca_pericia_request(sheet, key, label, ataque=True) if key else None
     extra = sum(_sinal(m.group(1), m.group(2)) for m in _BONUS_RE.finditer(text))
     if key:
-        req = pericia_request(sheet, key, label)
+        req = pericia_request(sheet, key, label, ataque=True)
         req["bonus"] += extra
         return req
     if re.fullmatch(r"\s*[+\-−]\s*\d+\s*", text):
-        return teste_request(1, extra, label)
+        return _com_condicoes(sheet, 1, extra, label, ataque=True)
     return None
 
 
@@ -417,17 +426,16 @@ def pericias_ameaca(sheet):
     return out
 
 
-def ameaca_pericia_request(sheet, key, label=None) -> dict:
-    """Teste da ameaça: um dos cinco testes da ficha, uma perícia escrita ou, sem nada, só o atributo."""
+def ameaca_pericia_request(sheet, key, label=None, ataque=False) -> dict:
+    """Teste da ameaça: um dos cinco testes da ficha, uma perícia escrita ou, sem nada, só o atributo.
+    As condições tiram dados como no agente."""
     _, nome, attr, *_ = _pericia(key)
     label = label or nome
     parsed = parse_teste(sheet.get("testes", {}).get(key, ""))
-    if parsed:
-        return teste_request(*parsed, label)
-    for outro, n_dados, bonus in pericias_ameaca(sheet):
-        if _pericia_no_texto(outro) == key:
-            return teste_request(n_dados, bonus, label)
-    return teste_request(sheet["atributos"].get(attr, 0), 0, label)
+    if not parsed:
+        parsed = next(((n_dados, bonus) for outro, n_dados, bonus in pericias_ameaca(sheet)
+                       if _pericia_no_texto(outro) == key), (sheet["atributos"].get(attr, 0), 0))
+    return _com_condicoes(sheet, *parsed, label, key, ataque)
 
 
 def normalize_ameaca(sheet: dict, to_int, clean_list) -> dict:
@@ -466,6 +474,7 @@ def normalize_ameaca(sheet: dict, to_int, clean_list) -> dict:
     ]
     desc = s.get("descricao") if isinstance(s.get("descricao"), dict) else {}
     s["descricao"] = {key: n(desc.get(key)) for key, _ in DESCRICAO}
+    s["condicoes"] = _condicoes(s.get("condicoes"))
     return apply_rules(s)
 
 
@@ -494,6 +503,8 @@ def apply_rules(sheet: dict) -> dict:
         sheet["pv"]["atual"] = max(0, min(sheet["pv"]["atual"], sheet["pv"]["max"]))
         return sheet
     sheet["nex"] = nex_valido(sheet.get("nex", 5))
+    if sheet.get("trilha") not in {key for key, *_ in trilhas_da_classe(sheet)}:
+        sheet["trilha"] = ""  # trocou de classe: a trilha da outra não vale
     sheet["pe_rodada"] = pe_por_rodada(sheet)
     sheet["dt_rituais"] = dt_rituais(sheet)
     _aplicar_pericias_da_origem(sheet)
@@ -513,6 +524,7 @@ def apply_rules(sheet: dict) -> dict:
     inv = sheet["inventario"]
     inv["carga_max"] = carga_maxima(sheet)
     inv["patente"], inv["limite_credito"], inv["limite_itens"] = patente(sheet)
+    _aplicar_estados(sheet)
     return sheet
 
 
@@ -590,4 +602,345 @@ def normalize(sheet: dict, to_int, clean_list) -> dict:
 
     desc = s.get("descricao") if isinstance(s.get("descricao"), dict) else {}
     s["descricao"] = {key: str(desc.get(key) or "") for key, _ in DESCRICAO}
+    e = s.get("estados") if isinstance(s.get("estados"), dict) else {}
+    s["estados"] = {key: bool(e.get(key, False)) for key in ("morrendo", "enlouquecendo", "pv_zerado", "san_zerada")}
+    for key in ("turnos_morrendo", "turnos_enlouquecendo"):
+        s["estados"][key] = to_int(e.get(key), 0)
+    s["condicoes"] = _condicoes(s.get("condicoes"))
+    trilha = _plain(s.get("trilha"))
+    s["trilha"] = next((k for k, (_, nome, *_) in TRILHA.items() if trilha in (k, _plain(nome))), "")
+    s["afinidade"] = next((e for e in AFINIDADES if _plain(e) == _plain(s.get("afinidade"))), "")
     return apply_rules(s)
+
+
+# ------------------------------------------------------------------ estados do agente (p. 88 e 111; errata p. 310)
+TURNOS_FATAIS = 3  # iniciar três turnos morrendo/enlouquecendo na mesma cena = morte/insanidade
+
+
+def machucado_agente(sheet) -> bool:
+    """Metade ou menos dos PV totais (p. 88). Não dá penalidade, mas é pré-requisito de habilidades."""
+    pv = sheet["pv"]
+    return pv["max"] > 0 and pv["atual"] * 2 <= pv["max"]
+
+
+def inconsciente(sheet) -> bool:
+    """Com 0 PV; acaba com qualquer cura de pelo menos 1 PV (p. 88)."""
+    return sheet["pv"]["max"] > 0 and sheet["pv"]["atual"] == 0
+
+
+def _aplicar_estados(sheet):
+    """Chegar a 0 PV liga "morrendo"; curar PV não desliga (só Medicina DT 20 ou efeitos, p. 88).
+    Chegar a 0 SAN liga "enlouquecendo"; qualquer cura de SAN desliga (errata da p. 310)."""
+    e = sheet["estados"]
+    pv0 = inconsciente(sheet)
+    if pv0 and not e["pv_zerado"]:
+        e["morrendo"] = True
+    e["pv_zerado"] = pv0
+    san = sheet["san"]
+    san0 = san["max"] > 0 and san["atual"] == 0
+    if san0 and not e["san_zerada"]:
+        e["enlouquecendo"] = True
+    elif san["atual"] > 0:
+        e["enlouquecendo"] = False
+    e["san_zerada"] = san0
+    for key in ("turnos_morrendo", "turnos_enlouquecendo"):
+        e[key] = max(0, min(e[key], TURNOS_FATAIS))
+
+
+def estabilizar(sheet):
+    """Primeiros socorros (Medicina DT 20, p. 56): perde inconsciente e morrendo e fica com 1 PV.
+    Os turnos contados continuam valendo até o fim da cena."""
+    sheet["estados"]["morrendo"] = False
+    sheet["pv"]["atual"] = max(1, sheet["pv"]["atual"])
+
+
+def acalmar(sheet):
+    """Acalmar (Diplomacia ou Religião DT 20, p. 54 e 58): o personagem fica com Sanidade 1."""
+    sheet["san"]["atual"] = max(1, sheet["san"]["atual"])
+    sheet["estados"]["enlouquecendo"] = False
+
+
+def nova_cena(sheet):
+    """Os turnos morrendo/enlouquecendo contam por cena: uma cena nova zera a contagem."""
+    sheet["estados"]["turnos_morrendo"] = sheet["estados"]["turnos_enlouquecendo"] = 0
+
+
+def morto(sheet) -> bool:
+    return sheet["estados"]["turnos_morrendo"] >= TURNOS_FATAIS
+
+
+def insano(sheet) -> bool:
+    return sheet["estados"]["turnos_enlouquecendo"] >= TURNOS_FATAIS
+
+
+def estados_texto(sheet):
+    """Estados para mostrar em resumo (barra lateral): [(texto, grave)]."""
+    if is_ameaca(sheet):
+        pv = sheet["pv"]
+        if pv["max"] and pv["atual"] == 0:
+            return [("DERROTADA", True)]
+        return [("MACHUCADA", False)] if pv["max"] and pv["atual"] <= machucado(sheet) else []
+    e, out = sheet["estados"], []
+    if morto(sheet):
+        out.append(("MORTO", True))
+    elif e["morrendo"]:
+        out.append((f"MORRENDO {e['turnos_morrendo']}/{TURNOS_FATAIS}", True))
+    elif inconsciente(sheet):
+        out.append(("INCONSCIENTE", True))
+    elif machucado_agente(sheet):
+        out.append(("MACHUCADO", False))
+    if insano(sheet):
+        out.append(("INSANO", True))
+    elif e["enlouquecendo"]:
+        out.append((f"ENLOUQUECENDO {e['turnos_enlouquecendo']}/{TURNOS_FATAIS}", True))
+    return out
+
+
+# ------------------------------------------------------------------ condições (p. 310-311, com a errata)
+# (chave, nome, resumo, piora para). Resumos curtos escritos para a ficha; o texto completo está no livro.
+# "piora para": receber a mesma condição de novo vira a seguinte (abalado duas vezes = apavorado).
+# Machucado, morrendo e enlouquecendo não estão aqui: a ficha calcula sozinha (ver estados acima).
+# Salvo indicação contrária, condições acabam no fim da cena.
+CONDICOES = [
+    ("abalado", "Abalado", "−1d20 em testes. Medo.", "apavorado"),
+    ("agarrado", "Agarrado", "Desprevenido e imóvel; −1d20 em ataques, só armas leves. Tiro de fora pode "
+                             "acertar o alvo errado (50%). Paralisia.", None),
+    ("alquebrado", "Alquebrado", "Habilidades e rituais custam +1 PE. Mental.", None),
+    ("apavorado", "Apavorado", "−2d20 em perícias; foge da fonte do medo ou não pode se aproximar dela. Medo.",
+     None),
+    ("asfixiado", "Asfixiado", "Sem respirar: aguenta rodadas = Vigor; depois Fortitude DT 5 (+5 por teste) "
+                               "a cada rodada; falhou, inconsciente e −1d6 PV por rodada.", None),
+    ("atordoado", "Atordoado", "Desprevenido e sem ações. Mental.", None),
+    ("caido", "Caído", "−2d20 em ataques corpo a corpo, deslocamento 1,5 m; Defesa −5 contra corpo a corpo e "
+                       "+5 contra ataques à distância.", None),
+    ("cego", "Cego", "Desprevenido e lento; sem Percepção para ver; −2d20 em perícias de AGI e FOR; os alvos "
+                     "têm camuflagem total. Sentidos.", None),
+    ("confuso", "Confuso", "1d6 no início do turno: 1 anda ao acaso (1d8), 2-3 não age, 4-5 ataca o mais "
+                           "próximo, 6 a condição acaba. Mental.", None),
+    ("debilitado", "Debilitado", "−2d20 em testes de AGI, FOR e VIG.", "inconsciente"),
+    ("desprevenido", "Desprevenido", "−5 na Defesa e −1d20 em Reflexos.", None),
+    ("doente", "Doente", "Efeito da doença.", None),
+    ("em_chamas", "Em Chamas", "1d6 de fogo no início do turno; ação padrão (ou água) apaga.", None),
+    ("enjoado", "Enjoado", "Só uma ação padrão ou de movimento por rodada.", None),
+    ("enredado", "Enredado", "Lento, vulnerável e −1d20 em ataques. Paralisia.", None),
+    ("envenenado", "Envenenado", "Efeito do veneno (outra condição ou dano por rodada, que se acumula).", None),
+    ("esmorecido", "Esmorecido", "−2d20 em testes de INT e PRE. Mental.", None),
+    ("exausto", "Exausto", "Debilitado, lento e vulnerável. Fadiga.", "inconsciente"),
+    ("fascinado", "Fascinado", "−2d20 em Percepção, só observa o que o fascinou; ação hostil encerra. Mental.",
+     None),
+    ("fatigado", "Fatigado", "Fraco e vulnerável. Fadiga.", "exausto"),
+    ("fraco", "Fraco", "−1d20 em testes de AGI, FOR e VIG.", "debilitado"),
+    ("frustrado", "Frustrado", "−1d20 em testes de INT e PRE. Mental.", "esmorecido"),
+    ("imovel", "Imóvel", "Deslocamento 0 m. Paralisia.", None),
+    ("inconsciente", "Inconsciente", "Indefeso e sem ações nem reações; acordar alguém gasta ação padrão.", None),
+    ("indefeso", "Indefeso", "Desprevenido, −10 na Defesa, falha em Reflexos, sofre golpe de misericórdia.",
+     None),
+    ("lento", "Lento", "Deslocamento pela metade; não corre nem faz investida. Paralisia.", None),
+    ("ofuscado", "Ofuscado", "−1d20 em ataques e Percepção. Sentidos.", None),
+    ("paralisado", "Paralisado", "Imóvel e indefeso; só ações puramente mentais. Paralisia.", None),
+    ("pasmo", "Pasmo", "Sem ações. Mental.", None),
+    ("perturbado", "Perturbado", "Na primeira vez na cena, recebe um efeito de insanidade (p. 111).", None),
+    ("petrificado", "Petrificado", "Inconsciente, com resistência a dano 10.", None),
+    ("sangrando", "Sangrando", "Vigor DT 20 no início do turno: passou, para; falhou, −1d6 PV. Medicina DT 20 "
+                               "(ação completa) estabiliza.", None),
+    ("surdo", "Surdo", "Sem Percepção para ouvir, −2d20 em Iniciativa, condição ruim para rituais. Sentidos.",
+     None),
+    ("surpreendido", "Surpreendido", "Desprevenido e sem ações.", None),
+    ("vulneravel", "Vulnerável", "−2 na Defesa.", None),
+]
+CONDICAO = {key: (nome, resumo, piora) for key, nome, resumo, piora in CONDICOES}
+
+
+def adicionar_condicao(sheet, key):
+    """Põe a condição na ficha. Se ela (ou uma pior da mesma linha) já está, piora um passo:
+    fatigado -> exausto -> inconsciente, fraco -> debilitado -> inconsciente, abalado -> apavorado..."""
+    cadeia = [key]
+    while CONDICAO[cadeia[-1]][2]:
+        cadeia.append(CONDICAO[cadeia[-1]][2])
+    atuais = sheet["condicoes"]
+    presentes = [i for i, c in enumerate(cadeia) if c in atuais]
+    if not presentes:
+        atuais.append(key)
+        return key
+    i = presentes[-1]
+    if i + 1 < len(cadeia):
+        atuais[atuais.index(cadeia[i])] = cadeia[i + 1]
+    for c in cadeia[:i]:  # um passo anterior que tenha sobrado fica coberto pelo pior
+        if c in atuais:
+            atuais.remove(c)
+    return cadeia[min(i + 1, len(cadeia) - 1)]
+
+
+def remover_condicao(sheet, key):
+    if key in sheet["condicoes"]:
+        sheet["condicoes"].remove(key)
+
+
+def _condicoes(valor):
+    """Lista de chaves válidas, sem repetir (aceita nomes com acento e maiúsculas)."""
+    por_nome = {_plain(nome): key for key, nome, *_ in CONDICOES}
+    out = []
+    for item in valor if isinstance(valor, list) else []:
+        key = item if item in CONDICAO else por_nome.get(_plain(item))
+        if key and key not in out:
+            out.append(key)
+    return out
+
+
+def condicoes_texto(sheet) -> str:
+    return ", ".join(CONDICAO[key][0].lower() for key in sheet.get("condicoes", []) if key in CONDICAO)
+
+
+# ------------------------------------------------------------------ penalidades das condições (p. 310-311)
+# Cada "–O" tira 1d20 do teste (p. 76); com 0 dados rola 2d20 e fica com o pior (p. 24). O livro não diz o
+# que acontece abaixo de 0, então para em 2d20↓. Condições que "incluem" outras (exausto = debilitado, lento
+# e vulnerável) contam as incluídas. Numa mesma linha vale só a pior (fraco/debilitado, abalado/apavorado,
+# frustrado/esmorecido); linhas diferentes somam. Caído na Defesa depende do ataque (±5): fica só no aviso.
+IMPLICA = {
+    "agarrado": ("desprevenido", "imovel"), "atordoado": ("desprevenido",), "cego": ("desprevenido", "lento"),
+    "exausto": ("debilitado", "lento", "vulneravel"), "fatigado": ("fraco", "vulneravel"),
+    "enredado": ("lento", "vulneravel"), "paralisado": ("imovel", "indefeso"), "inconsciente": ("indefeso",),
+    "petrificado": ("inconsciente",), "surpreendido": ("desprevenido",), "indefeso": ("desprevenido",),
+}
+_FISICOS, _MENTAIS = ("agi", "for", "vig"), ("int", "pre")
+# (condição, d20 a menos, linha, vale para (perícia, atributo, é ataque))
+PENALIDADES_DADOS = [
+    ("abalado", 1, "medo", lambda k, a, atk: True),
+    ("apavorado", 2, "medo", lambda k, a, atk: True),  # "em testes de perícia": todo teste da ficha é de perícia
+    ("fraco", 1, "fisico", lambda k, a, atk: a in _FISICOS),
+    ("debilitado", 2, "fisico", lambda k, a, atk: a in _FISICOS),
+    ("frustrado", 1, "mental", lambda k, a, atk: a in _MENTAIS),
+    ("esmorecido", 2, "mental", lambda k, a, atk: a in _MENTAIS),
+    ("cego", 2, "cego", lambda k, a, atk: a in ("agi", "for")),
+    ("fascinado", 2, "fascinado", lambda k, a, atk: k == "percepcao"),
+    ("ofuscado", 1, "ofuscado", lambda k, a, atk: atk or k == "percepcao"),
+    ("surdo", 2, "surdo", lambda k, a, atk: k == "iniciativa"),
+    ("desprevenido", 1, "desprevenido", lambda k, a, atk: k == "reflexos"),
+    ("agarrado", 1, "agarrado", lambda k, a, atk: atk),
+    ("enredado", 1, "enredado", lambda k, a, atk: atk),
+    ("caido", 2, "caido", lambda k, a, atk: atk and k == "luta"),  # só corpo a corpo
+]
+
+
+def condicoes_efetivas(sheet) -> set:
+    """Condições marcadas + as que elas incluem (+ inconsciente com 0 PV, no agente)."""
+    pendentes = list(sheet.get("condicoes", []))
+    if (not is_ameaca(sheet) and "estados" in sheet and inconsciente(sheet)
+            and not tem_habilidade(sheet, "tropa", 99)):  # Inquebrável: morrendo não fica indefeso
+        pendentes.append("inconsciente")
+    out = set()
+    while pendentes:
+        key = pendentes.pop()
+        if key not in out:
+            out.add(key)
+            pendentes.extend(IMPLICA.get(key, ()))
+    return out
+
+
+def penalidade_dados(sheet, key=None, ataque=False):
+    """(d20 a menos, [nomes das condições]) num teste da perícia `key` (ou ataque)."""
+    efetivas = condicoes_efetivas(sheet)
+    if not efetivas:
+        return 0, []
+    attr = _pericia(key)[2] if key else None
+    pior = {}
+    for cond, n, linha, vale in PENALIDADES_DADOS:
+        if cond in efetivas and vale(key, attr, ataque) and n > pior.get(linha, (0, ""))[0]:
+            pior[linha] = (n, cond)
+    nomes = [CONDICAO[c][0].lower() for _, c in pior.values()]
+    return sum(n for n, _ in pior.values()), nomes
+
+
+def penalidade_defesa(sheet):
+    """(pontos a menos na Defesa, [nomes]): desprevenido −5 (indefeso −10 no lugar), vulnerável −2."""
+    efetivas = condicoes_efetivas(sheet)
+    total, nomes = 0, []
+    if "indefeso" in efetivas:
+        total, nomes = 10, ["indefeso"]
+    elif "desprevenido" in efetivas:
+        total, nomes = 5, ["desprevenido"]
+    if "vulneravel" in efetivas:
+        total, nomes = total + 2, nomes + ["vulnerável"]
+    return total, nomes
+
+
+def _com_condicoes(sheet, n_dados, bonus, label, key=None, ataque=False):
+    """Pedido do teste já sem os d20 que as condições tiram; o motivo vai no nome da rolagem."""
+    menos, nomes = penalidade_dados(sheet, key, ataque)
+    if menos:
+        n_dados = max(0, n_dados - menos)
+        label = f"{label} (−{menos}d20: {', '.join(nomes)})" if label else f"−{menos}d20: {', '.join(nomes)}"
+    return teste_request(n_dados, bonus, label)
+
+
+def dados_pericia(sheet, key) -> str:
+    """Dados do teste da perícia já com as condições ('3d20', '2d20↓')."""
+    attr = _pericia(key)[2]
+    return _fmt_dados(max(0, sheet["atributos"].get(attr, 0) - penalidade_dados(sheet, key)[0]))
+
+
+def defesa_ameaca(sheet) -> int:
+    return sheet.get("defesa", 0) - penalidade_defesa(sheet)[0]
+
+
+# ------------------------------------------------------------------ trilhas e afinidade (p. 26-35 e 114)
+# A trilha é escolhida em NEX 10% e dá uma habilidade em NEX 10%, 40%, 65% e 99%. Aqui ficam só os nomes e a
+# página; as que mudam números da ficha estão em TRILHA_AUTOMATICA e entram nas contas sozinhas.
+NEX_TRILHA = (10, 40, 65, 99)
+TRILHAS = {
+    "combatente": [
+        ("aniquilador", "Aniquilador", 26, ("A Favorita", "Técnica Secreta", "Técnica Sublime", "Máquina de Matar")),
+        ("comandante", "Comandante de Campo", 27,
+         ("Inspirar Confiança", "Estrategista", "Brecha na Guarda", "Oficial Comandante")),
+        ("guerreiro", "Guerreiro", 27, ("Técnica Letal", "Revidar", "Força Opressora", "Potência Máxima")),
+        ("operacoes", "Operações Especiais", 27,
+         ("Iniciativa Aprimorada", "Ataque Extra", "Surto de Adrenalina", "Sempre Alerta")),
+        ("tropa", "Tropa de Choque", 27, ("Casca Grossa", "Cai Dentro", "Duro de Matar", "Inquebrável")),
+    ],
+    "especialista": [
+        ("atirador", "Atirador de Elite", 30,
+         ("Mira de Elite", "Disparo Letal", "Disparo Impactante", "Atirar para Matar")),
+        ("infiltrador", "Infiltrador", 30, ("Ataque Furtivo", "Gatuno", "Assassinar", "Sombra Fugaz")),
+        ("medico", "Médico de Campo", 31, ("Paramédico", "Equipe de Trauma", "Resgate", "Reanimação")),
+        ("negociador", "Negociador", 31,
+         ("Eloquência", "Discurso Motivador", "Eu Conheço um Cara", "Truque de Mestre")),
+        ("tecnico", "Técnico", 31, ("Inventário Otimizado", "Remendão", "Improvisar", "Preparado para Tudo")),
+    ],
+    "ocultista": [
+        ("conduite", "Conduíte", 34, ("Ampliar Ritual", "Acelerar Ritual", "Anular Ritual", "Canalizar o Medo")),
+        ("flagelador", "Flagelador", 34, ("Poder do Flagelo", "Abraçar a Dor", "Absorver Agonia", "Medo Tangível")),
+        ("graduado", "Graduado", 35,
+         ("Saber Ampliado", "Grimório Ritualístico", "Rituais Eficientes", "Conhecendo o Medo")),
+        ("intuitivo", "Intuitivo", 35, ("Mente Sã", "Presença Poderosa", "Inabalável", "Presença do Medo")),
+        ("lamina", "Lâmina Paranormal", 35,
+         ("Lâmina Maldita", "Gladiador Paranormal", "Conjuração Marcial", "Lâmina do Medo")),
+    ],
+}
+TRILHA = {key: (cls, nome, pagina, habilidades)
+          for cls, trilhas in TRILHAS.items() for key, nome, pagina, habilidades in trilhas}
+# (trilha, NEX) -> o que a ficha já calcula
+TRILHA_AUTOMATICA = {
+    ("tropa", 10): "+1 PV por 5% de NEX",
+    ("operacoes", 10): "+5 em Iniciativa",
+    ("tecnico", 10): "carga com FOR + INT",
+    ("tropa", 99): "+5 na Defesa machucado; morrendo não fica indefeso",
+}
+AFINIDADES = ["Conhecimento", "Energia", "Morte", "Sangue"]
+NEX_AFINIDADE = 50
+
+
+def tem_habilidade(sheet, trilha, nex) -> bool:
+    return sheet.get("trilha") == trilha and sheet.get("nex", 5) >= nex
+
+
+def habilidades_trilha(sheet):
+    """[(NEX, nome, já tem, efeito automático ou "")] da trilha escolhida."""
+    info = TRILHA.get(sheet.get("trilha"))
+    if not info:
+        return []
+    return [(nex, nome, sheet.get("nex", 5) >= nex, TRILHA_AUTOMATICA.get((sheet["trilha"], nex), ""))
+            for nex, nome in zip(NEX_TRILHA, info[3])]
+
+
+def trilhas_da_classe(sheet):
+    return TRILHAS.get(class_key(sheet), [])

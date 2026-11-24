@@ -10,7 +10,7 @@ import customtkinter as ctk
 from src import ordem
 from src.sheet_io import to_int
 from src.ui.common import (BUTTON, BUTTON_HOVER, ERROR, INPUT, PANEL, PANEL_DARK, TEXT, TEXT_DIM, TEXT_FAINT,
-                           TEXT_MUTED, TabBar, fmt_bonus, small_button, update, update_bar)
+                           TEXT_MUTED, WARN, TabBar, fmt_bonus, small_button, update, update_bar)
 from src.ui.sheet_base import BaseSheetView
 
 SYSTEM = ordem.SYSTEM
@@ -20,6 +20,7 @@ CIRCULOS = [f"{c}º" for c in ordem.CUSTO_CIRCULO]
 CLASS_NAMES = [c["nome"] for c in ordem.CLASSES.values()]
 GRADE_LABELS = {value: label for value, label in ordem.GRAUS}
 GRADE_VALUES = {label: value for value, label in ordem.GRAUS}
+NONE = "—"
 
 
 class SheetView(BaseSheetView):
@@ -42,6 +43,10 @@ class SheetView(BaseSheetView):
     def _display(value, kind):
         if kind == "grade":
             return GRADE_LABELS.get(value, GRADE_LABELS[0])
+        if kind == "trilha":
+            return ordem.TRILHA[value][1] if value in ordem.TRILHA else NONE
+        if kind == "afinidade":
+            return value or NONE
         return BaseSheetView._display(value, kind)
 
     # ================================================================= API
@@ -130,6 +135,8 @@ class SheetView(BaseSheetView):
         self._computed(lambda: update(origin_info, text=self._origin_text()))
         self._caption(grid, "CLASSE").grid(row=2, column=0, sticky="w", pady=3, padx=(0, 8))
         self._combo(grid, ("classe",), CLASS_NAMES).grid(row=2, column=1, sticky="ew", pady=3)
+        if self._built_class is not None:
+            self._build_trail(grid, 3)
 
         small = ctk.CTkFrame(card, fg_color="transparent")
         small.pack(fill=tk.X, padx=12, pady=(0, 10))
@@ -152,6 +159,47 @@ class SheetView(BaseSheetView):
         self._field(box(2, "DESLOCAMENTO"), ("deslocamento",), width=60, size=15, bold=True, justify="center",
                     transparent=True).pack()
 
+    def _build_trail(self, grid, row):
+        """Trilha da classe (p. 26-35) com as habilidades por NEX, e afinidade (NEX 50%, p. 114)."""
+        trilhas = ordem.trilhas_da_classe(self.sheet)
+        por_nome = {nome: key for key, nome, *_ in trilhas}
+        self._caption(grid, "TRILHA").grid(row=row, column=0, sticky="w", pady=3, padx=(0, 8))
+        self._option(grid, ("trilha",), [NONE] + list(por_nome), width=200, kind="trilha",
+                     parse=lambda nome: por_nome.get(nome, "")).grid(row=row, column=1, sticky="ew", pady=3)
+
+        powers = ctk.CTkFrame(grid, fg_color="transparent")
+        powers.grid(row=row + 1, column=1, sticky="ew", pady=(0, 4))
+        for n in range(len(ordem.NEX_TRILHA)):
+            label = ctk.CTkLabel(powers, text="", font=ctk.CTkFont(size=10), anchor="w", justify=tk.LEFT,
+                                 wraplength=280, height=16)
+            label.pack(fill=tk.X)
+            self._computed(lambda n=n, lbl=label: update(lbl, **self._trail_line(n)))
+
+        self._caption(grid, "AFINIDADE").grid(row=row + 2, column=0, sticky="w", pady=3, padx=(0, 8))
+        line = ctk.CTkFrame(grid, fg_color="transparent")
+        line.grid(row=row + 2, column=1, sticky="ew", pady=3)
+        menu = self._option(line, ("afinidade",), [NONE] + ordem.AFINIDADES, width=130, kind="afinidade",
+                            parse=lambda nome: "" if nome == NONE else nome)
+        menu.pack(side=tk.LEFT)
+        note = ctk.CTkLabel(line, text="", font=ctk.CTkFont(size=9, slant="italic"), text_color=TEXT_FAINT)
+        note.pack(side=tk.LEFT, padx=8)
+
+        def show_affinity():
+            liberada = self.sheet.get("nex", 5) >= ordem.NEX_AFINIDADE or self.sheet.get("afinidade")
+            update(menu, state="normal" if liberada else "disabled")
+            update(note, text="" if liberada else f"a partir de NEX {ordem.NEX_AFINIDADE}%")
+        self._computed(show_affinity)
+
+    def _trail_line(self, n):
+        """Uma habilidade da trilha: em branco se já tem pelo NEX, apagada se ainda não."""
+        linhas = ordem.habilidades_trilha(self.sheet)
+        if n >= len(linhas):
+            return {"text": "", "height": 1}
+        nex, nome, tem, auto = linhas[n]
+        pagina = ordem.TRILHA[self.sheet["trilha"]][2]
+        text = f"NEX {nex}%  {nome}" + (f"  ·  {auto}" if auto and tem else "") + (f"  (p. {pagina})" if n == 0 else "")
+        return {"text": text, "height": 16, "text_color": TEXT if tem else TEXT_FAINT}
+
     def _origin_text(self):
         info = ordem.origem_info(self.sheet)
         if info is None:
@@ -169,6 +217,7 @@ class SheetView(BaseSheetView):
                          wraplength=330).pack(padx=12, pady=(8, 0))
         for key, sigla, nome in ordem.RECURSOS:
             self._resource(card, key, sigla, nome)
+        self._build_conditions(card)
 
     def _resource(self, parent, key, sigla, nome):
         color = RESOURCE_COLORS[key]
@@ -180,6 +229,10 @@ class SheetView(BaseSheetView):
         ctk.CTkLabel(top, text=sigla, font=ctk.CTkFont(size=16, weight="bold"), text_color=color).pack(side=tk.LEFT)
         ctk.CTkLabel(top, text=nome.upper(), font=ctk.CTkFont(size=9, weight="bold"),
                      text_color=TEXT_MUTED).pack(side=tk.LEFT, padx=8)
+        if key == "pv":
+            hurt = ctk.CTkLabel(top, text="", font=ctk.CTkFont(size=10, weight="bold"))
+            hurt.pack(side=tk.LEFT)
+            self._computed(lambda: update(hurt, **self._pv_state_text()))
 
         vals = ctk.CTkFrame(top, fg_color="transparent")
         vals.pack(side=tk.RIGHT)
@@ -208,6 +261,142 @@ class SheetView(BaseSheetView):
             bonus.pack(side=tk.RIGHT)
             ctk.CTkLabel(bonus, text="bônus", font=ctk.CTkFont(size=9), text_color=TEXT_FAINT).pack(side=tk.LEFT, padx=4)
             self._field(bonus, (key, "bonus"), kind="int", width=40, height=22, justify="center").pack(side=tk.LEFT)
+        if key == "pv":
+            self._dying_row(frame, "morrendo", "MORRENDO", "MORTO", "Estabilizar", ordem.estabilizar,
+                            "Medicina DT 20 (+5 por vez na cena): fica com 1 PV")
+        elif key == "san":
+            self._dying_row(frame, "enlouquecendo", "ENLOUQUECENDO", "INSANO", "Acalmar", ordem.acalmar,
+                            "Diplomacia ou Religião DT 20 (+5 por vez na cena): fica com SAN 1")
+
+    # ----------------------------------------------------------------- condições (p. 310-311)
+    CONDITION_HINT = "Passe o mouse numa condição para ver o efeito. Acabam no fim da cena."
+    CONDITIONS_PER_ROW = 3
+
+    def _build_conditions(self, parent):
+        """Etiquetas das condições: o menu adiciona (repetir piora: abalado -> apavorado), o × tira."""
+        frame = ctk.CTkFrame(parent, fg_color=PANEL_DARK, corner_radius=8)
+        frame.pack(fill=tk.X, padx=12, pady=(6, 10))
+        head = ctk.CTkFrame(frame, fg_color="transparent")
+        head.pack(fill=tk.X, padx=10, pady=(6, 4))
+        self._caption(head, "CONDIÇÕES").pack(side=tk.LEFT)
+        add = ctk.CTkOptionMenu(head, values=[nome for _, nome, *_ in ordem.CONDICOES], width=120, height=22,
+                                fg_color=BUTTON, button_color=BUTTON, button_hover_color=BUTTON_HOVER,
+                                font=ctk.CTkFont(size=10), dropdown_font=ctk.CTkFont(size=11),
+                                command=lambda nome: self._add_condition(nome, add))
+        add.set("+ condição")
+        add.pack(side=tk.RIGHT)
+        chips = ctk.CTkFrame(frame, fg_color="transparent")
+        chips.pack(fill=tk.X, padx=8)
+        for col in range(self.CONDITIONS_PER_ROW):
+            chips.grid_columnconfigure(col, weight=1, uniform="condicao")
+        hint = ctk.CTkLabel(frame, text="", font=ctk.CTkFont(size=9, slant="italic"), text_color=TEXT_FAINT,
+                            wraplength=330, justify="left", anchor="w")
+        state = {"shown": None}
+
+        def refresh():
+            if not chips.winfo_exists():
+                raise tk.TclError("ficha refeita")
+            atuais = list(self.sheet.get("condicoes", []))
+            if atuais == state["shown"]:
+                return
+            state["shown"] = atuais
+            for child in chips.winfo_children():
+                child.destroy()
+            for n, key in enumerate(atuais):
+                nome, resumo, _ = ordem.CONDICAO[key]
+                chip = ctk.CTkFrame(chips, fg_color=PANEL, corner_radius=6, height=22)
+                chip.grid(row=n // self.CONDITIONS_PER_ROW, column=n % self.CONDITIONS_PER_ROW, sticky="ew",
+                          padx=2, pady=2)
+                label = ctk.CTkLabel(chip, text=nome, font=ctk.CTkFont(size=10, weight="bold"), text_color=WARN,
+                                     height=20)
+                label.pack(side=tk.LEFT, padx=(6, 0))
+                ctk.CTkButton(chip, text="×", width=16, height=18, fg_color="transparent", hover_color=BUTTON,
+                              text_color=TEXT_MUTED, font=ctk.CTkFont(size=12),
+                              command=lambda k=key: self._remove_condition(k)).pack(side=tk.RIGHT, padx=2)
+                for widget in (chip, label):
+                    widget.bind("<Enter>", lambda _e, t=f"{nome}: {resumo}": hint.configure(text=t))
+                    widget.bind("<Leave>", lambda _e: hint.configure(text=self.CONDITION_HINT))
+            hint.configure(text=self.CONDITION_HINT)
+            if atuais:
+                hint.pack(fill=tk.X, padx=10, pady=(2, 6))
+            else:
+                hint.pack_forget()
+
+        self._computed(refresh)
+
+    def _add_condition(self, nome, menu):
+        menu.set("+ condição")
+        key = next(k for k, n, *_ in ordem.CONDICOES if n == nome)
+        ordem.adicionar_condicao(self.sheet, key)
+        self._changed()
+
+    def _remove_condition(self, key):
+        ordem.remover_condicao(self.sheet, key)
+        self._changed()
+
+    def _defense_warning(self):
+        lines = []
+        if ordem.sobrecarregado(self.sheet):
+            lines.append("Sobrecarregado: −5 na Defesa e nas perícias de carga, −3m de deslocamento")
+        menos, nomes = ordem.penalidade_defesa(self.sheet)
+        if menos:
+            lines.append(f"Condições: −{menos} na Defesa ({', '.join(nomes)})")
+        if "caido" in self.sheet.get("condicoes", []):
+            lines.append("Caído: −5 na Defesa contra corpo a corpo, +5 contra à distância")
+        return "\n".join(lines)
+
+    def _pv_state_text(self):
+        if ordem.inconsciente(self.sheet):
+            return {"text": "INCONSCIENTE", "text_color": ERROR}
+        if ordem.machucado_agente(self.sheet):
+            return {"text": "MACHUCADO", "text_color": WARN}
+        return {"text": "", "text_color": TEXT_FAINT}
+
+    def _dying_row(self, parent, state, title, final, action_text, action, hint):
+        """Morrendo/enlouquecendo (p. 88 e 111): só aparece quando ativo. As bolinhas contam os turnos
+        iniciados assim na cena; a terceira é morte/insanidade."""
+        row = ctk.CTkFrame(parent, fg_color=PANEL, corner_radius=6)
+        turns = f"turnos_{state}"
+        line = ctk.CTkFrame(row, fg_color="transparent")
+        line.pack(fill=tk.X, padx=8, pady=(6, 0))
+        label = ctk.CTkLabel(line, text=title, font=ctk.CTkFont(size=11, weight="bold"), text_color=ERROR)
+        label.pack(side=tk.LEFT, padx=(0, 6))
+        self._computed(lambda: update(label, text=final if self.sheet["estados"][turns] >= ordem.TURNOS_FATAIS
+                                      else title))
+        for n in range(1, ordem.TURNOS_FATAIS + 1):
+            dot = ctk.CTkButton(line, text="", width=16, height=20, fg_color="transparent", hover_color=PANEL_DARK,
+                                font=ctk.CTkFont(size=14),
+                                command=lambda n=n: self._commit(("estados", turns),
+                                                                 n - 1 if self.sheet["estados"][turns] == n else n))
+            dot.pack(side=tk.LEFT)
+            self._computed(lambda d=dot, n=n: update(
+                d, text="●" if self.sheet["estados"][turns] >= n else "○",
+                text_color=ERROR if self.sheet["estados"][turns] >= n else "#555555"))
+        ctk.CTkLabel(line, text="turnos", font=ctk.CTkFont(size=9), text_color=TEXT_MUTED).pack(side=tk.LEFT, padx=4)
+        small_button(line, action_text, lambda: self._state_action(action), width=70, height=20).pack(
+            side=tk.RIGHT)
+        small_button(line, "Nova cena", self._new_scene, width=64, height=20).pack(side=tk.RIGHT, padx=4)
+        ctk.CTkLabel(row, text=hint, font=ctk.CTkFont(size=9, slant="italic"), text_color=TEXT_FAINT).pack(
+            anchor=tk.W, padx=8, pady=(0, 6))
+        shown = {"value": None}
+
+        def show():
+            visible = self.sheet["estados"][state] or self.sheet["estados"][turns] >= ordem.TURNOS_FATAIS
+            if visible != shown["value"]:
+                shown["value"] = visible
+                if visible:
+                    row.pack(fill=tk.X, padx=10, pady=(0, 8))
+                else:
+                    row.pack_forget()
+        self._computed(show)
+
+    def _state_action(self, action):
+        action(self.sheet)
+        self._changed()
+
+    def _new_scene(self):
+        ordem.nova_cena(self.sheet)
+        self._changed()
 
     def _adjust(self, key, delta):
         res = self.sheet[key]
@@ -241,11 +430,10 @@ class SheetView(BaseSheetView):
             if idx == 0:
                 ctk.CTkLabel(formula, text="+", text_color=TEXT_DIM).pack(side=tk.LEFT)
 
-        warn = ctk.CTkLabel(card, text="", font=ctk.CTkFont(size=10, weight="bold"), text_color=ERROR)
+        warn = ctk.CTkLabel(card, text="", font=ctk.CTkFont(size=10, weight="bold"), text_color=ERROR,
+                            wraplength=340, justify="left")
         warn.pack(anchor=tk.W, padx=12)
-        self._computed(lambda: update(warn, 
-            text="Sobrecarregado: −5 na Defesa e nas perícias de carga, −3m de deslocamento"
-            if ordem.sobrecarregado(self.sheet) else ""))
+        self._computed(lambda: update(warn, text=self._defense_warning()))
 
         grid = ctk.CTkFrame(card, fg_color="transparent")
         grid.pack(fill=tk.X, padx=12, pady=(4, 10))
@@ -304,7 +492,9 @@ class SheetView(BaseSheetView):
             ctk.CTkLabel(scroll, text=attr.upper(), font=ctk.CTkFont(size=10), text_color=TEXT_MUTED).grid(row=r, column=2)
             dice = ctk.CTkLabel(scroll, text="", font=ctk.CTkFont(size=11), text_color=TEXT_DIM)
             dice.grid(row=r, column=3)
-            self._computed(lambda a=attr, d=dice: update(d, text=ordem.dados(self.sheet, a)))
+            self._computed(lambda k=key, a=attr, d=dice: update(
+                d, text=ordem.dados_pericia(self.sheet, k),
+                text_color=WARN if ordem.penalidade_dados(self.sheet, k)[0] else TEXT_DIM))
             self._grade(scroll, ("pericias", key, "treino")).grid(row=r, column=4, pady=1)
             self._field(scroll, ("pericias", key, "outros"), kind="int", width=40, justify="center",
                         height=22).grid(row=r, column=5, pady=1)
@@ -315,7 +505,8 @@ class SheetView(BaseSheetView):
                 lambda k=key: ERROR if k in ordem.PERICIAS_CARGA and ordem.sobrecarregado(self.sheet) else TEXT,
             ).grid(row=r, column=6, pady=1)
 
-        ctk.CTkLabel(view, text="+ Penalidade de carga.   * Somente treinada.   2d20↓ = atributo 0: rola 2d20 e fica com o pior.",
+        ctk.CTkLabel(view, text="+ Penalidade de carga.   * Somente treinada.   2d20↓ = 0 dados: rola 2d20 e fica com o "
+                                "pior.   Dados em amarelo: condições tirando d20.",
                      font=ctk.CTkFont(size=9, slant="italic"), text_color=TEXT_FAINT).pack(anchor=tk.W, pady=(4, 0))
 
     # Ataques

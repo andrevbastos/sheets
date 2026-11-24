@@ -31,6 +31,30 @@ def is_dm_only(sheet) -> bool:
     return ordem.is_ameaca(sheet) or dnd.is_monstro(sheet)
 
 
+def states(sheet: dict):
+    """Estados graves ou de atenção para resumos (barra lateral do mestre): [(texto, grave)]."""
+    if not sheet:
+        return []
+    if sheet.get("sistema") == ordem_sheet.SYSTEM:
+        condicoes = ordem.condicoes_texto(sheet)
+        return ordem.estados_texto(sheet) + ([(condicoes, False)] if condicoes else [])
+    c = sheet.get("combate", {})
+    if not c.get("hp_max"):
+        return []
+    if dnd.is_monstro(sheet):
+        if c["hp_atual"] == 0:
+            return [("DERROTADO", True)]
+        return [("SANGRANDO", False)] if c["hp_atual"] <= c["hp_max"] // 2 else []
+    if c["hp_atual"] > 0:
+        return []
+    morte = c.get("morte", {})
+    if morte.get("falhas", 0) >= 3:
+        return [("MORTO", True)]
+    if morte.get("sucessos", 0) >= 3:
+        return [("ESTÁVEL", False)]
+    return [(f"CAÍDO  ✓{morte.get('sucessos', 0)} ✗{morte.get('falhas', 0)}", True)]
+
+
 def iniciativa_request(sheet: dict):
     """Pedido de rolagem de iniciativa da ficha (qualquer sistema)."""
     if sheet.get("sistema") == ordem_sheet.SYSTEM:

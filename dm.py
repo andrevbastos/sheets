@@ -20,7 +20,7 @@ from src.sheet_io import SHEET_SYSTEM_DND5E, SYSTEMS, create_new_sheet, create_n
 from src.ui.common import (BG, BORDER, BUTTON, BUTTON_HOVER, ERROR, OK, PANEL, PANEL_DARK, TEXT_DIM, TEXT_FAINT,
                            TEXT_MUTED, TITLE_FONT, WARN, UiDispatcher, allow_ctrl_c, bring_to_front,
                            install_click_defocus, update, update_bar)
-from src.ui.systems import iniciativa_request, is_dm_only, make_sheet_view, resources
+from src.ui.systems import iniciativa_request, is_dm_only, make_sheet_view, resources, states
 
 PREFS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dm-prefs.json")
 
@@ -219,7 +219,7 @@ class DMApp:
         sheet = entry.sheet
         return (entry.key, entry.label, entry.is_player, entry.online,
                 sheet.get("cor") if sheet else None, is_dm_only(sheet),
-                tuple(r[0] for r in resources(sheet)) if sheet else ())
+                tuple(r[0] for r in resources(sheet)) if sheet else (), tuple(states(sheet)))
 
     def _update_card_values(self, entry: Entry):
         if not entry.sheet:
@@ -281,6 +281,13 @@ class DMApp:
                 self._card_values.setdefault(entry.key, []).append((lbl_val, bar, res_color))
             status = "" if entry.online else ("desconectado" if entry.is_player else
                                               self.threat_word.split()[-1] if is_dm_only(entry.sheet) else "ficha local")
+            alerts = states(entry.sheet)
+            if alerts:  # machucado, morrendo, enlouquecendo... (grave = vermelho)
+                lbl = ctk.CTkLabel(card, text="  ·  ".join(text for text, _ in alerts), height=16,
+                                   font=ctk.CTkFont(size=10, weight="bold"), wraplength=210, justify="left",
+                                   text_color=ERROR if any(grave for _, grave in alerts) else WARN)
+                lbl.pack(anchor=tk.W, padx=10, pady=(2, 0))
+                widgets.append(lbl)
         else:
             status = "Sem ficha (clique para escolher)"
         if status:
